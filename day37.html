@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 37 — LangChain: Agents + Tools | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 37 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 37</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>LangChain: Agents + Tools</h1>
+  <p>Chains follow a fixed path. Agents are different — the LLM decides at runtime which tools to call and in what order. Today you'll build agents that use built-in and custom tools, with both OpenAI and Ollama backends.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>What agents are — LLM as a reasoning engine <span style="color:#555">~10 min</span></li>
+        <li>Creating custom tools with @tool <span style="color:#555">~20 min</span></li>
+        <li>Building a ReAct agent <span style="color:#555">~20 min</span></li>
+        <li>Agent memory — keeping conversation history <span style="color:#555">~15 min</span></li>
+        <li>Connecting to Ollama for local agents <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>Agent</strong> → a workflow engine where the LLM is the orchestrator</li>
+        <li><strong>@tool</strong> → a service method annotated for LLM consumption (like an MCP tool)</li>
+        <li><strong>ReAct pattern</strong> → Reason + Act loop, similar to a retry-with-decision service</li>
+        <li><strong>Agent memory</strong> → conversation state, like a session-scoped Spring bean</li>
+        <li><strong>Tool schema</strong> → OpenAPI spec that tells the LLM how to call your function</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- WHAT ARE AGENTS -->
+  <section>
+    <h2>1. What Are Agents?</h2>
+    <p>A chain is like a hardcoded workflow — step A always goes to step B. An agent is different: given a goal and a set of tools, the LLM reasons about which tools to call and in what order to reach the answer. The LLM is the control flow.</p>
+
+    <div class="diagram-box">
+      Chain:  input → prompt → LLM → output parser → result
+      &nbsp;
+      Agent:  input → LLM decides → tool call → LLM observes result
+                            ↑                              ↓
+                            └──── (repeat until done) ────┘
+                                         → final answer
+    </div>
+
+    <div class="callout-teal">
+      <strong>ReAct pattern</strong> (Reason + Act): The LLM alternates between <em>thinking</em> about what to do next and <em>acting</em> by calling a tool. It sees the tool output and reasons again. This continues until the LLM decides it has enough information to give a final answer.
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install langchain langchain-openai langchain-ollama duckduckgo-search
+    </div>
+  </section>
+
+  <!-- CUSTOM TOOLS -->
+  <section>
+    <h2>2. Creating Custom Tools with @tool</h2>
+    <p>A tool is a Python function decorated with <code>@tool</code>. The docstring becomes the tool's description — the LLM uses it to decide when to call the tool. The type hints define the input schema.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_core.tools import tool
+from datetime import datetime
+import httpx
+
+@tool
+def get_current_time() -> str:
+    """Returns the current date and time. Use when the user asks about time or dates."""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+@tool
+def calculate(expression: str) -> str:
+    """
+    Evaluates a mathematical expression and returns the result.
+    Input must be a valid Python math expression like '2 + 2' or '100 * 0.15'.
+    """
+    try:
+        # Safe eval for math expressions only
+        result = eval(expression, {"__builtins__": {}}, {})
+        return str(result)
+    except Exception as e:
+        return f"Error: {e}"
+
+@tool
+def get_python_docs(query: str) -> str:
+    """
+    Searches the Python documentation for information about a module or function.
+    Use when the user asks about Python stdlib functions or modules.
+    """
+    # Simplified — real implementation would call docs.python.org API
+    response = httpx.get(
+        f"https://docs.python.org/3/search.html",
+        params={"q": query, "check_keywords": "yes", "area": "default"},
+    )
+    return f"Search results for '{query}': {response.url}"
+
+# Inspect the tool schema the LLM will see
+print(calculate.name)         # "calculate"
+print(calculate.description)  # the docstring
+print(calculate.args_schema.schema())  # JSON schema of inputs</code></pre>
+    </div>
+  </section>
+
+  <!-- BUILDING AN AGENT -->
+  <section>
+    <h2>3. Building a ReAct Agent</h2>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_openai import ChatOpenAI
+from langchain.agents import create_react_agent, AgentExecutor
+from langchain import hub
+from langchain_core.tools import tool
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+# Define the tools
+tools = [get_current_time, calculate, get_python_docs]
+
+# Pull the standard ReAct prompt from LangChain hub
+# It instructs the LLM on the Thought/Action/Observation format
+prompt = hub.pull("hwchase17/react")
+
+# Create the agent (the LLM + tools + prompt wired together)
+agent = create_react_agent(llm, tools, prompt)
+
+# AgentExecutor handles the ReAct loop
+executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    verbose=True,      # prints each Thought/Action/Observation step
+    max_iterations=5,  # prevent infinite loops
+    handle_parsing_errors=True,
+)
+
+# Run it
+result = executor.invoke({
+    "input": "What is 15% of 847, and what time is it now?"
+})
+print(result["output"])</code></pre>
+    </div>
+
+    <h3>What verbose=True Shows</h3>
+    <div class="shell-block">
+      Thought: I need to calculate 15% of 847 and also get the current time.<br>
+      Action: calculate<br>
+      Action Input: 847 * 0.15<br>
+      Observation: 127.05<br>
+      Thought: Now I need the current time.<br>
+      Action: get_current_time<br>
+      Action Input: (no input needed)<br>
+      Observation: 2026-04-25 14:32:10<br>
+      Thought: I have both answers now.<br>
+      Final Answer: 15% of 847 is 127.05. The current time is 2:32 PM.
+    </div>
+  </section>
+
+  <!-- TOOL BINDING (MODERN API) -->
+  <section>
+    <h2>4. Tool Binding — The Modern Approach</h2>
+    <p>For OpenAI models, <code>bind_tools</code> is the cleaner, more reliable approach. It uses OpenAI's native function calling instead of text parsing.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_openai import ChatOpenAI
+from langchain_core.tools import tool
+from langchain_core.messages import HumanMessage, ToolMessage
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+tools = [calculate, get_current_time]
+
+# Bind tools to the LLM
+llm_with_tools = llm.bind_tools(tools)
+
+# Tool lookup map for dispatching calls
+tool_map = {t.name: t for t in tools}
+
+def run_agent(user_input: str) -> str:
+    messages = [HumanMessage(user_input)]
+
+    while True:
+        response = llm_with_tools.invoke(messages)
+        messages.append(response)
+
+        # If no tool calls, we have the final answer
+        if not response.tool_calls:
+            return response.content
+
+        # Execute each tool call and append results
+        for tool_call in response.tool_calls:
+            tool_fn = tool_map[tool_call["name"]]
+            result = tool_fn.invoke(tool_call["args"])
+            messages.append(ToolMessage(
+                content=str(result),
+                tool_call_id=tool_call["id"],
+            ))
+
+result = run_agent("What is 2^10 and what time is it?")
+print(result)</code></pre>
+    </div>
+  </section>
+
+  <!-- AGENT MEMORY -->
+  <section>
+    <h2>5. Agent Memory</h2>
+    <p>By default, each agent invocation is stateless — it doesn't remember previous questions. Add memory to maintain conversation context across multiple turns.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_core.chat_history import InMemoryChatMessageHistory
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+llm_with_tools = llm.bind_tools([calculate, get_current_time])
+
+# Session store — keyed by session_id
+store: dict[str, InMemoryChatMessageHistory] = {}
+
+def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
+    if session_id not in store:
+        store[session_id] = InMemoryChatMessageHistory()
+    return store[session_id]
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful assistant with access to tools."),
+    MessagesPlaceholder(variable_name="history"),   # inject chat history
+    ("human", "{input}"),
+])
+
+chain = prompt | llm_with_tools
+
+# Wrap with message history
+chain_with_history = RunnableWithMessageHistory(
+    chain,
+    get_session_history,
+    input_messages_key="input",
+    history_messages_key="history",
+)
+
+config = {"configurable": {"session_id": "user-123"}}
+
+# Turn 1
+r1 = chain_with_history.invoke({"input": "My name is Vipin."}, config=config)
+print(r1.content)
+
+# Turn 2 — it remembers the name from turn 1
+r2 = chain_with_history.invoke({"input": "What's my name?"}, config=config)
+print(r2.content)   # "Your name is Vipin."</code></pre>
+    </div>
+  </section>
+
+  <!-- OLLAMA AGENT -->
+  <section>
+    <h2>6. Agents with Ollama (Local)</h2>
+    <p>Not all local models support tool calling, but modern ones (llama3.2, mistral-nemo, qwen2.5) do. Use <code>ChatOllama</code> as a drop-in replacement.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_ollama import ChatOllama
+from langchain_core.tools import tool
+
+# Requires Ollama running locally: ollama pull llama3.2
+llm = ChatOllama(model="llama3.2", temperature=0)
+
+@tool
+def word_count(text: str) -> int:
+    """Counts the number of words in a text string."""
+    return len(text.split())
+
+tools = [word_count, calculate]
+llm_with_tools = llm.bind_tools(tools)
+
+# Same agent logic as above — the only change is the LLM
+result = run_agent("How many words are in 'the quick brown fox'?")
+print(result)
+
+# Zero cost, zero latency to OpenAI, full privacy</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Model capability varies:</strong> Smaller local models (7B parameters) are less reliable at tool selection than GPT-4o. Test with your specific use case. llama3.2:3b handles simple single-tool tasks well; complex multi-step reasoning benefits from larger models.
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Define a tool</div>
+        <code>@tool<br>def my_tool(arg: str) -> str:<br>  """Docstring = tool description."""</code>
+        <p>Docstring tells LLM when to use it; type hints define the schema</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Bind tools</div>
+        <code>llm_with_tools = llm.bind_tools(tools)</code>
+        <p>Makes the LLM aware of the tools it can call</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Check for tool calls</div>
+        <code>if response.tool_calls: ...</code>
+        <p>Non-empty = LLM wants to call a tool; empty = final answer</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Invoke tool</div>
+        <code>tool_fn.invoke(tool_call["args"])</code>
+        <p>Pass the args dict from the tool_call object</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Tool result</div>
+        <code>ToolMessage(content=str(result), tool_call_id=call["id"])</code>
+        <p>Wrap tool output before appending to messages</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Max iterations</div>
+        <code>AgentExecutor(max_iterations=5)</code>
+        <p>Safety valve — prevents runaway agent loops</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Chat history</div>
+        <code>RunnableWithMessageHistory(chain, get_session_history)</code>
+        <p>Injects conversation history into each invocation</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Local agent</div>
+        <code>ChatOllama(model="llama3.2")</code>
+        <p>Drop-in for ChatOpenAI; needs Ollama running locally</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- WRAP UP -->
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>The docstring of a <code>@tool</code> function is its description to the LLM. Write it clearly — poor descriptions lead to wrong tool selection. Treat it like an API contract.</li>
+      <li>The ReAct loop: the LLM reasons, picks a tool, sees the result, reasons again. Your job is to provide good tools and let the LLM drive the control flow.</li>
+      <li><code>bind_tools</code> + a manual while loop is more reliable than <code>AgentExecutor</code> for production code — you control the loop, error handling, and retries explicitly.</li>
+      <li>Memory requires you to store and inject <code>chat_history</code> on each invocation. <code>RunnableWithMessageHistory</code> handles this automatically when keyed by session ID.</li>
+      <li>Local Ollama agents work for simple tasks at zero cost. For complex multi-step reasoning, larger models are significantly more reliable.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 38</h4>
+      <ul>
+        <li>Write a <code>@tool</code> that reads a file and returns its contents</li>
+        <li>Build an agent with 3+ tools and test it with questions that require multiple tool calls</li>
+        <li>Try the same agent with both ChatOpenAI and ChatOllama — compare output quality</li>
+        <li>Add session memory and have a 3-turn conversation that requires remembering context</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 38 — ChromaDB + Vector Stores:</strong> Agents with tools are powerful. But what if the "tool" is searching your own documents? Tomorrow: embeddings, vector databases, and the RAG pattern — how to give an LLM access to your private data without fine-tuning.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day36.html" class="nav-btn">← Day 36: LangChain Basics</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day38.html" class="nav-btn">Day 38: ChromaDB →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-37-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-37-done') === 'true';
+    localStorage.setItem('day-37-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

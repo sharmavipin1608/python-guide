@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 9 — Dunder Methods + Properties | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 9 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 09</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Dunder Methods + Properties</h1>
+  <p>Dunder methods (double-underscore methods) are the hooks that make Python's built-in syntax work. Implement them in your classes to get <code>print()</code>, <code>==</code>, <code>len()</code>, and more for free.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>What dunder (double underscore) methods are and how Python uses them</li>
+        <li><code>__str__</code> and <code>__repr__</code> — like Java's <code>toString()</code></li>
+        <li><code>__eq__</code> and <code>__hash__</code> — like Java's <code>equals()</code> and <code>hashCode()</code></li>
+        <li><code>__len__</code>, <code>__contains__</code>, <code>__getitem__</code> — making containers</li>
+        <li><code>@property</code> decorator for computed, read-only attributes</li>
+        <li><code>@property.setter</code> for validated setters</li>
+        <li>Why <code>@property</code> is cleaner than Java's get/set boilerplate</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>__str__</code> → <code>toString()</code> (human-readable)</li>
+        <li><code>__repr__</code> → no exact equivalent — "debug" representation used by REPL</li>
+        <li><code>__eq__</code> + <code>__hash__</code> → <code>equals()</code> + <code>hashCode()</code></li>
+        <li><code>__len__</code> → custom <code>size()</code> that also makes <code>len()</code> work</li>
+        <li><code>__getitem__</code> → enables <code>obj[key]</code> — like implementing <code>List.get()</code></li>
+        <li><code>@property</code> → getters/setters without the <code>getX()</code>/<code>setX()</code> boilerplate</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- CONTENT: What are dunders -->
+  <section>
+    <h2>What Are Dunder Methods?</h2>
+
+    <p>Dunder methods (short for "double underscore") are how Python implements operator overloading and built-in function hooks. When you write <code>len(x)</code>, Python calls <code>x.__len__()</code>. When you write <code>a == b</code>, Python calls <code>a.__eq__(b)</code>. You implement these methods to make your classes behave like built-ins.</p>
+
+    <table class="dunder-table">
+      <thead>
+        <tr>
+          <th>Syntax you write</th>
+          <th>Java equivalent</th>
+          <th>Dunder called</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>print(obj)</td><td>toString()</td><td>__str__</td></tr>
+        <tr><td>repr(obj) / REPL echo</td><td>toString() (debug)</td><td>__repr__</td></tr>
+        <tr><td>a == b</td><td>equals()</td><td>__eq__</td></tr>
+        <tr><td>hash(obj)</td><td>hashCode()</td><td>__hash__</td></tr>
+        <tr><td>len(obj)</td><td>custom size()</td><td>__len__</td></tr>
+        <tr><td>x in obj</td><td>contains()</td><td>__contains__</td></tr>
+        <tr><td>obj[key]</td><td>get(key)</td><td>__getitem__</td></tr>
+        <tr><td>obj[key] = val</td><td>set(key, val)</td><td>__setitem__</td></tr>
+        <tr><td>for x in obj</td><td>iterator()</td><td>__iter__</td></tr>
+        <tr><td>a + b</td><td>no built-in</td><td>__add__</td></tr>
+        <tr><td>a &lt; b</td><td>compareTo()</td><td>__lt__</td></tr>
+        <tr><td>bool(obj)</td><td>isEmpty() / custom</td><td>__bool__</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- CONTENT: __str__ and __repr__ -->
+  <section>
+    <h2>__str__ and __repr__</h2>
+
+    <h3>__str__ vs __repr__</h3>
+    <p><code>__str__</code> is for human-readable output — called by <code>print()</code> and <code>str()</code>. <code>__repr__</code> is for unambiguous developer output — shown in the REPL, logs, and error messages. The rule: <code>__repr__</code> should ideally be a string you could paste back into Python to recreate the object.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">public class Point {
+    private int x, y;
+
+    public Point(int x, int y) {
+        this.x = x; this.y = y;
+    }
+
+    @Override
+    public String toString() {
+        return "Point(" + x + ", " + y + ")";
+    }
+    // No __repr__ equivalent in Java
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">class Point:
+    def __init__(self, x: int, y: int):
+        self.x = x
+        self.y = y
+
+    def __str__(self) -> str:
+        # Human-readable — for print()
+        return f"({self.x}, {self.y})"
+
+    def __repr__(self) -> str:
+        # Unambiguous — for REPL, logs, debugging
+        # Aim: eval(repr(obj)) == obj
+        return f"Point({self.x!r}, {self.y!r})"
+
+
+p = Point(3, 4)
+print(p)        # (3, 4)        — uses __str__
+print(repr(p))  # Point(3, 4)  — uses __repr__
+
+# In a list, __repr__ is used for each element
+points = [Point(1, 2), Point(3, 4)]
+print(points)   # [Point(1, 2), Point(3, 4)]</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Tip:</strong> If you only implement one, implement <code>__repr__</code>. Python falls back to <code>__repr__</code> when <code>__str__</code> is missing, so you get both contexts covered.
+    </div>
+  </section>
+
+  <!-- CONTENT: __eq__ and __hash__ -->
+  <section>
+    <h2>__eq__ and __hash__</h2>
+
+    <h3>Value equality vs identity</h3>
+    <p>By default, Python classes use identity for <code>==</code> (same as <code>is</code> — same object in memory). To get value equality like Java's <code>equals()</code>, implement <code>__eq__</code>. Whenever you implement <code>__eq__</code>, you should also implement <code>__hash__</code> so objects can be used in sets and as dict keys.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">@Override
+public boolean equals(Object o) {
+    if (this == o) return true;
+    if (!(o instanceof Point)) return false;
+    Point p = (Point) o;
+    return x == p.x && y == p.y;
+}
+
+@Override
+public int hashCode() {
+    return Objects.hash(x, y);
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">class Point:
+    def __init__(self, x: int, y: int):
+        self.x = x
+        self.y = y
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Point):
+            return NotImplemented   # not False — lets Python try other.__eq__
+        return self.x == other.x and self.y == other.y
+
+    def __hash__(self) -> int:
+        # Must be consistent with __eq__
+        # Objects that are == must have the same hash
+        return hash((self.x, self.y))
+
+    def __repr__(self):
+        return f"Point({self.x}, {self.y})"
+
+
+p1 = Point(3, 4)
+p2 = Point(3, 4)
+p3 = Point(0, 0)
+
+print(p1 == p2)  # True  — value equality
+print(p1 is p2)  # False — different objects
+print(p1 == p3)  # False
+
+# Can use in sets and dicts because __hash__ is implemented
+point_set = {p1, p2, p3}
+print(len(point_set))  # 2 — p1 and p2 are "equal"
+
+lookup = {p1: "origin-ish", p3: "origin"}
+print(lookup[p2])  # "origin-ish" — p2 hashes/equals to p1</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Return <code>NotImplemented</code>, not <code>False</code></strong> when the type is wrong in <code>__eq__</code>. This signals Python to try the reflected operation on the other object — important for symmetry with custom types.
+    </div>
+  </section>
+
+  <!-- CONTENT: Container dunders -->
+  <section>
+    <h2>Container Dunders</h2>
+
+    <h3>__len__, __contains__, __getitem__</h3>
+    <p>Implement these three and your class works with <code>len()</code>, <code>in</code>, and <code>[]</code> indexing. This is how Python's built-in <code>list</code>, <code>dict</code>, and <code>str</code> expose their behaviour — you can do the same for any custom collection.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Playlist:
+    def __init__(self, name: str):
+        self.name = name
+        self._songs = []
+
+    def add(self, song: str) -> None:
+        self._songs.append(song)
+
+    def __len__(self) -> int:
+        # Enables: len(playlist)
+        return len(self._songs)
+
+    def __contains__(self, song: str) -> bool:
+        # Enables: "song" in playlist
+        return song in self._songs
+
+    def __getitem__(self, index: int) -> str:
+        # Enables: playlist[0], playlist[-1], playlist[1:3]
+        return self._songs[index]
+
+    def __bool__(self) -> bool:
+        # Enables: if playlist:
+        # Without this, __len__ is used (0 == False, non-zero == True)
+        return len(self._songs) > 0
+
+    def __repr__(self):
+        return f"Playlist({self.name!r}, {len(self)} songs)"
+
+
+p = Playlist("Morning Mix")
+p.add("Song A")
+p.add("Song B")
+p.add("Song C")
+
+print(len(p))            # 3
+print("Song B" in p)     # True
+print("Song Z" in p)     # False
+print(p[0])              # Song A
+print(p[-1])             # Song C
+print(p[1:3])            # ['Song B', 'Song C']
+
+if p:
+    print(f"{p} is not empty")</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Bonus:</strong> Once you implement <code>__getitem__</code> with integer indices, Python automatically makes your object iterable — you can use it in a <code>for</code> loop without implementing <code>__iter__</code>. (Day 10 covers iterators properly.)
+    </div>
+  </section>
+
+  <!-- CONTENT: @property -->
+  <section>
+    <h2>@property — Better Than Getters/Setters</h2>
+
+    <h3>The Java getter/setter problem</h3>
+    <p>Java forces you to write <code>getX()</code>/<code>setX()</code> from the start "just in case" you need validation later — or refactor the entire codebase if you start with a public field. Python's <code>@property</code> solves this: start with a plain attribute, add computed/validated access later with zero change to calling code.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">public class Circle {
+    private double radius;
+
+    public Circle(double radius) {
+        if (radius &lt; 0) throw new IllegalArgumentException();
+        this.radius = radius;
+    }
+
+    public double getRadius() { return radius; }
+
+    public void setRadius(double r) {
+        if (r &lt; 0) throw new IllegalArgumentException();
+        this.radius = r;
+    }
+
+    public double getArea() {
+        return Math.PI * radius * radius;
+    }
+}
+// Usage: c.getRadius(), c.setRadius(5), c.getArea()</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import math
+
+class Circle:
+    def __init__(self, radius: float):
+        self.radius = radius   # calls the setter below
+
+    @property
+    def radius(self) -> float:
+        # Getter — called on attribute READ: c.radius
+        return self._radius
+
+    @radius.setter
+    def radius(self, value: float) -> None:
+        # Setter — called on attribute WRITE: c.radius = 5
+        if value < 0:
+            raise ValueError(f"Radius must be non-negative, got {value}")
+        self._radius = value
+
+    @property
+    def area(self) -> float:
+        # Read-only computed property — no setter needed
+        return math.pi * self._radius ** 2
+
+    @property
+    def diameter(self) -> float:
+        return self._radius * 2
+
+    def __repr__(self):
+        return f"Circle(radius={self._radius})"
+
+
+c = Circle(5)
+print(c.radius)    # 5       — looks like attribute access, calls getter
+print(c.area)      # 78.53   — computed on the fly, no ()
+print(c.diameter)  # 10
+
+c.radius = 10      # calls setter — validated
+print(c.area)      # 314.15
+
+# c.radius = -1    # raises ValueError
+# c.area = 100     # AttributeError: can't set attribute (no setter defined)</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Zero refactor rule:</strong> If you start with <code>self.radius = radius</code> (plain attribute) and later need validation, you just add <code>@property</code> and rename the backing field to <code>self._radius</code>. All callers using <code>c.radius</code> keep working — no API change.
+    </div>
+
+    <h3>@property.deleter</h3>
+    <p>You can also define a <code>@property.deleter</code> to handle <code>del obj.attr</code>. Rarely needed, but useful for resources and caches.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class CachedReport:
+    def __init__(self):
+        self._cache = None
+
+    @property
+    def data(self):
+        if self._cache is None:
+            print("Computing expensive data...")
+            self._cache = [1, 2, 3]   # expensive computation
+        return self._cache
+
+    @data.deleter
+    def data(self):
+        # Clears the cache — called on: del report.data
+        print("Cache cleared")
+        self._cache = None
+
+
+r = CachedReport()
+print(r.data)  # Computing expensive data... [1, 2, 3]
+print(r.data)  # [1, 2, 3]  — from cache, no recompute
+del r.data     # Cache cleared
+print(r.data)  # Computing expensive data... [1, 2, 3]</code></pre>
+    </div>
+
+    <h3>Putting it all together — a Money class</h3>
+    <p>A realistic example combining <code>__init__</code>, <code>__repr__</code>, <code>__str__</code>, <code>__eq__</code>, <code>__hash__</code>, <code>__add__</code>, and <code>@property</code>:</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from decimal import Decimal
+
+class Money:
+    def __init__(self, amount: str | Decimal, currency: str = "USD"):
+        self._amount = Decimal(str(amount))
+        self._currency = currency.upper()
+
+    @property
+    def amount(self) -> Decimal:
+        return self._amount
+
+    @property
+    def currency(self) -> str:
+        return self._currency
+
+    def __str__(self) -> str:
+        return f"{self._currency} {self._amount:.2f}"
+
+    def __repr__(self) -> str:
+        return f"Money({self._amount!r}, {self._currency!r})"
+
+    def __eq__(self, other) -> bool:
+        if not isinstance(other, Money):
+            return NotImplemented
+        return self._amount == other._amount and self._currency == other._currency
+
+    def __hash__(self) -> int:
+        return hash((self._amount, self._currency))
+
+    def __add__(self, other: "Money") -> "Money":
+        if self._currency != other._currency:
+            raise ValueError(f"Cannot add {self._currency} and {other._currency}")
+        return Money(self._amount + other._amount, self._currency)
+
+    def __lt__(self, other: "Money") -> bool:
+        if self._currency != other._currency:
+            raise ValueError("Cannot compare different currencies")
+        return self._amount < other._amount
+
+
+price = Money("9.99")
+tax   = Money("0.80")
+total = price + tax
+
+print(total)           # USD 10.79
+print(repr(total))     # Money(Decimal('10.79'), 'USD')
+print(price < total)   # True
+print(sorted([total, price, tax]))  # sorted uses __lt__</code></pre>
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Human display</div>
+        <code>def __str__(self): return "..."</code>
+        <p>Called by <code>print()</code> and <code>str()</code>. Like Java's <code>toString()</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Debug display</div>
+        <code>def __repr__(self): return f"Class({self.x!r})"</code>
+        <p>REPL, logs, containers. If only one, implement this — <code>__str__</code> falls back to it.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Value equality</div>
+        <code>def __eq__(self, other): return self.x == other.x</code>
+        <p>Enables <code>==</code>. Return <code>NotImplemented</code> (not <code>False</code>) for wrong types.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Hashable</div>
+        <code>def __hash__(self): return hash((self.x, self.y))</code>
+        <p>Required if <code>__eq__</code> is implemented. Allows use in <code>set</code> and as <code>dict</code> key.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">len() support</div>
+        <code>def __len__(self): return len(self._items)</code>
+        <p>Enables <code>len(obj)</code> and makes empty object falsy by default.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">in operator</div>
+        <code>def __contains__(self, item): return item in self._data</code>
+        <p>Enables <code>x in obj</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Index access</div>
+        <code>def __getitem__(self, key): return self._data[key]</code>
+        <p>Enables <code>obj[0]</code>, <code>obj["key"]</code>, slices. Also makes object iterable.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">@property getter</div>
+        <code>@property / def name(self): return self._name</code>
+        <p>Access as <code>obj.name</code> — no parentheses needed.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">@property setter</div>
+        <code>@name.setter / def name(self, value): self._name = value</code>
+        <p>Called on <code>obj.name = "x"</code>. Validate here.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- WRAP-UP -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Dunder methods are how Python maps syntax (<code>==</code>, <code>len()</code>, <code>in</code>, <code>[]</code>, <code>print()</code>) to your class. Implement them to make your objects behave like built-ins, not like foreign objects that need special method calls.</li>
+      <li>Always implement <code>__repr__</code> — it serves as fallback for <code>__str__</code> and is invaluable in logs and debugging. Make it reconstructable: <code>eval(repr(obj)) == obj</code> when practical.</li>
+      <li>If you implement <code>__eq__</code>, you must also implement <code>__hash__</code>. Python automatically sets <code>__hash__ = None</code> (making objects unhashable) when you define <code>__eq__</code> without <code>__hash__</code>.</li>
+      <li><code>@property</code> replaces Java's getter/setter boilerplate. Start with a plain attribute; add <code>@property</code> later for validation or computation — with zero change to calling code.</li>
+      <li>Read-only computed properties (like <code>area</code>) replace methods like <code>getArea()</code>. They're accessed without <code>()</code>, making the API cleaner — they look like data, not behaviour.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 10</h4>
+      <ul>
+        <li>Add <code>__str__</code>, <code>__repr__</code>, <code>__eq__</code>, and <code>__hash__</code> to the <code>Shape</code> hierarchy from Day 8's practice</li>
+        <li>Build a <code>Vector2D</code> class that supports <code>+</code> (<code>__add__</code>), <code>*</code> scalar multiplication (<code>__mul__</code>), and <code>abs()</code> via <code>__abs__</code> returning the magnitude</li>
+        <li>Create a <code>Temperature</code> class with a <code>@property</code> for <code>celsius</code>, a setter that validates range, and read-only <code>fahrenheit</code> and <code>kelvin</code> computed properties</li>
+        <li>Implement a <code>WordBag</code> class backed by a <code>list</code> that supports <code>len()</code>, <code>in</code>, and <code>bag[0]</code> indexing through dunder methods</li>
+        <li>Experiment: create two objects that are <code>==</code> but not <code>is</code>, then use them as dict keys to verify hash consistency</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 10: Iterators + Generators</strong><br>
+      You'll learn exactly what makes a Python object iterable, how to implement the <code>__iter__</code>/<code>__next__</code> protocol, and how the <code>yield</code> keyword turns any function into a lazy generator — processing infinite sequences or huge files with constant memory.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day8.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day10.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 9;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

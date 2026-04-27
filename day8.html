@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 8 — OOP: Classes + Inheritance | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 8 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 08</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>OOP: Classes + Inheritance</h1>
+  <p>Python's object model is familiar but different. No access modifiers, no interfaces, no compile-time type enforcement — yet the OOP story is complete and expressive.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>Defining classes with <code>class</code> and the <code>__init__</code> constructor</li>
+        <li><code>self</code> — Python's explicit <code>this</code></li>
+        <li>Instance variables vs class variables</li>
+        <li>Instance methods, and how they differ from Java instance methods</li>
+        <li>Inheritance with <code>super()</code> and method overriding</li>
+        <li>No access modifiers — <code>_protected</code> and <code>__mangled</code> conventions</li>
+        <li>Duck typing — why interfaces aren't needed (yet)</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>class Foo</code> → same syntax, no <code>public</code> keyword needed</li>
+        <li><code>public Foo(...) {}</code> → <code>def __init__(self, ...):</code></li>
+        <li><code>this.x = x</code> → <code>self.x = x</code></li>
+        <li><code>extends</code> → <code>class Child(Parent):</code></li>
+        <li><code>super().method()</code> → same, but <code>super()</code> needs no args in Python 3</li>
+        <li><code>private</code> → <code>__name</code> (name-mangled); <code>protected</code> → <code>_name</code> (convention only)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- CONTENT: Defining a class -->
+  <section>
+    <h2>Defining Classes</h2>
+
+    <h3>Basic class structure</h3>
+    <p>A Python class looks similar to Java but is leaner — no field declarations outside <code>__init__</code>, no access modifiers, and <code>self</code> must always be the first parameter of instance methods.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">public class BankAccount {
+    private String owner;
+    private double balance;
+
+    public BankAccount(String owner, double balance) {
+        this.owner = owner;
+        this.balance = balance;
+    }
+
+    public void deposit(double amount) {
+        this.balance += amount;
+    }
+
+    public double getBalance() {
+        return this.balance;
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">class BankAccount:
+    def __init__(self, owner: str, balance: float = 0.0):
+        self.owner = owner      # instance variable
+        self.balance = balance  # instance variable
+
+    def deposit(self, amount: float) -> None:
+        self.balance += amount
+
+    def get_balance(self) -> float:
+        return self.balance
+
+
+acc = BankAccount("Alice", 1000.0)
+acc.deposit(500)
+print(acc.get_balance())  # 1500.0</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>self is not magic — it's just a convention.</strong> Python passes the instance as the first argument to every instance method. You could name it anything, but <code>self</code> is the universal convention. Java hides this with the implicit <code>this</code>.
+    </div>
+
+    <h3>Instance variables vs class variables</h3>
+    <p>Instance variables are set on <code>self</code> — each object has its own copy. Class variables are defined in the class body and shared across all instances, like Java's <code>static</code> fields.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Employee:
+    # Class variable — shared by ALL instances (like Java static field)
+    company = "Acme Corp"
+    headcount = 0
+
+    def __init__(self, name: str, salary: float):
+        # Instance variables — unique per object
+        self.name = name
+        self.salary = salary
+        Employee.headcount += 1  # access class var via class name
+
+    def describe(self) -> str:
+        # Both accessible on self, but class var is on the class
+        return f"{self.name} at {Employee.company}"
+
+
+e1 = Employee("Alice", 90_000)
+e2 = Employee("Bob", 85_000)
+
+print(Employee.headcount)   # 2
+print(e1.company)           # "Acme Corp" — found via class
+Employee.company = "MegaCorp"
+print(e2.company)           # "MegaCorp" — all instances see the change</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Gotcha:</strong> If you do <code>e1.company = "Other"</code> you create an <em>instance</em> variable that shadows the class variable on <code>e1</code> only. The class variable is unchanged. This surprises Java developers.
+    </div>
+  </section>
+
+  <!-- CONTENT: Methods -->
+  <section>
+    <h2>Instance Methods</h2>
+
+    <h3>Regular instance methods</h3>
+    <p>Any method defined with <code>self</code> as the first parameter is an instance method. Python has no separate syntax for <code>void</code> — methods return <code>None</code> by default.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Stack:
+    def __init__(self):
+        self._items = []   # _prefix = "please treat as private"
+
+    def push(self, item) -> None:
+        self._items.append(item)
+
+    def pop(self):
+        if self.is_empty():
+            raise IndexError("pop from empty stack")
+        return self._items.pop()
+
+    def peek(self):
+        if self.is_empty():
+            raise IndexError("peek at empty stack")
+        return self._items[-1]
+
+    def is_empty(self) -> bool:
+        return len(self._items) == 0
+
+    def size(self) -> int:
+        return len(self._items)
+
+
+s = Stack()
+s.push(10)
+s.push(20)
+s.push(30)
+print(s.peek())  # 30
+print(s.pop())   # 30
+print(s.size())  # 2</code></pre>
+    </div>
+
+    <h3>Static and class methods</h3>
+    <p>Python has two alternatives to regular instance methods: <code>@staticmethod</code> (like Java <code>static</code>) and <code>@classmethod</code> (receives the class, not the instance — useful for factory methods).</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Temperature:
+    def __init__(self, celsius: float):
+        self.celsius = celsius
+
+    # @staticmethod: no self, no cls — pure function scoped to class
+    @staticmethod
+    def celsius_to_fahrenheit(c: float) -> float:
+        return c * 9 / 5 + 32
+
+    # @classmethod: receives the class as first arg (cls), not instance
+    # Great for alternative constructors (factory methods)
+    @classmethod
+    def from_fahrenheit(cls, f: float) -> "Temperature":
+        return cls((f - 32) * 5 / 9)
+
+    def __repr__(self):
+        return f"Temperature({self.celsius:.1f}°C)"
+
+
+t1 = Temperature(100)
+print(Temperature.celsius_to_fahrenheit(100))  # 212.0
+
+t2 = Temperature.from_fahrenheit(212)          # factory constructor
+print(t2)                                       # Temperature(100.0°C)</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Java parallel:</strong> <code>@classmethod</code> with an alternative constructor pattern replaces Java's multiple constructor overloads or <code>static Foo of(...)</code> factory methods.
+    </div>
+  </section>
+
+  <!-- CONTENT: Inheritance -->
+  <section>
+    <h2>Inheritance</h2>
+
+    <h3>Single inheritance with super()</h3>
+    <p>Python inheritance uses parentheses: <code>class Child(Parent)</code>. <code>super()</code> in Python 3 needs no arguments — it already knows which class and instance to use.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">public class Animal {
+    protected String name;
+    public Animal(String name) {
+        this.name = name;
+    }
+    public String speak() {
+        return "...";
+    }
+}
+
+public class Dog extends Animal {
+    private String breed;
+    public Dog(String name, String breed) {
+        super(name);
+        this.breed = breed;
+    }
+    @Override
+    public String speak() {
+        return "Woof!";
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">class Animal:
+    def __init__(self, name: str):
+        self.name = name
+
+    def speak(self) -> str:
+        return "..."
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.name!r})"
+
+
+class Dog(Animal):
+    def __init__(self, name: str, breed: str):
+        super().__init__(name)   # no args needed in Python 3
+        self.breed = breed
+
+    def speak(self) -> str:     # override — no @Override annotation
+        return "Woof!"
+
+
+class Cat(Animal):
+    def speak(self) -> str:
+        return "Meow!"
+
+
+dog = Dog("Rex", "Labrador")
+cat = Cat("Whiskers")
+print(dog.speak())   # Woof!
+print(cat.speak())   # Meow!
+print(dog)           # Dog('Rex')</code></pre>
+      </div>
+    </div>
+
+    <h3>isinstance() and type checking</h3>
+    <p>Python's equivalent of Java's <code>instanceof</code> is <code>isinstance()</code>. It respects the inheritance hierarchy. Prefer it over checking <code>type(obj) == SomeClass</code> which is too strict.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">print(isinstance(dog, Dog))     # True
+print(isinstance(dog, Animal))  # True  — inheritance respected
+print(isinstance(cat, Dog))     # False
+
+# Checking the exact type (usually too strict)
+print(type(dog) == Dog)         # True
+print(type(dog) == Animal)      # False — even though Dog IS-A Animal</code></pre>
+    </div>
+
+    <h3>Multiple inheritance</h3>
+    <p>Python supports multiple inheritance — a class can inherit from several parents. Python resolves method lookup order via the MRO (Method Resolution Order), computed with the C3 linearization algorithm. You won't use this daily, but you'll encounter it in frameworks.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Flyable:
+    def fly(self) -> str:
+        return "I can fly!"
+
+class Swimmable:
+    def swim(self) -> str:
+        return "I can swim!"
+
+class Duck(Animal, Flyable, Swimmable):
+    def speak(self) -> str:
+        return "Quack!"
+
+
+donald = Duck("Donald")
+print(donald.speak())  # Quack!
+print(donald.fly())    # I can fly!
+print(donald.swim())   # I can swim!
+
+# Inspect the MRO (method lookup order)
+print(Duck.__mro__)
+# (Duck, Animal, Flyable, Swimmable, object)</code></pre>
+    </div>
+  </section>
+
+  <!-- CONTENT: Access control -->
+  <section>
+    <h2>Access Control Conventions</h2>
+
+    <h3>No access modifiers — conventions instead</h3>
+    <p>Python has no <code>private</code>, <code>protected</code>, or <code>public</code> keywords. Instead, it uses naming conventions that the community respects.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Config:
+    MAX_RETRIES = 3            # public constant (ALL_CAPS)
+
+    def __init__(self, host: str, port: int):
+        self.host = host           # public — use freely
+        self._port = port          # _single: "internal use, handle with care"
+        self.__secret = "s3cr3t"   # __double: name-mangled
+
+    def _validate(self):
+        # _prefix: "internal helper, not part of public API"
+        return self._port > 0
+
+    def connect(self):
+        # Public method — part of the API
+        if self._validate():
+            return f"Connecting to {self.host}:{self._port}"
+
+
+c = Config("localhost", 5432)
+print(c.host)      # OK — public
+print(c._port)     # Works but linters/IDEs warn — you're breaking convention
+# print(c.__secret)  # AttributeError! Name-mangled to _Config__secret
+print(c._Config__secret)  # Still accessible if you really need it</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Python's philosophy:</strong> "We're all consenting adults here." Name mangling (<code>__dunder</code>) prevents accidental override in subclasses — it's not true privacy. The convention is respected throughout the ecosystem.
+    </div>
+
+    <h3>Duck typing</h3>
+    <p>In Java, you'd define an interface so a method can accept multiple types. In Python, if it has the right methods, it works — no declaration needed. This is duck typing: "If it walks like a duck and quacks like a duck, it's a duck."</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">interface Printable {
+    void print();
+}
+
+class Report implements Printable {
+    public void print() { ... }
+}
+
+void printAll(List&lt;Printable&gt; items) {
+    for (Printable p : items) p.print();
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">class Report:
+    def print(self):
+        print("Printing report...")
+
+class Invoice:
+    def print(self):
+        print("Printing invoice...")
+
+class LegacyDoc:
+    def print(self):
+        print("Printing legacy doc...")
+
+# No interface needed — anything with .print() works
+def print_all(items):
+    for item in items:
+        item.print()   # works as long as item has .print()
+
+print_all([Report(), Invoice(), LegacyDoc()])  # all work</code></pre>
+      </div>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Day 43 preview:</strong> When you need to enforce an interface (for tooling, docs, or discipline), Python has <code>abc.ABC</code> and <code>typing.Protocol</code>. Duck typing works for most cases; ABCs add rigor when needed.
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Define class</div>
+        <code>class Foo: / def __init__(self, x): / self.x = x</code>
+        <p>No <code>public</code>, no field declarations — just assign on <code>self</code> in <code>__init__</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Instantiate</div>
+        <code>obj = Foo(42)</code>
+        <p>No <code>new</code> keyword. Call the class like a function.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Class variable</div>
+        <code>class Foo: / count = 0</code>
+        <p>Shared across all instances — like Java's <code>static</code> field</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Inheritance</div>
+        <code>class Child(Parent):</code>
+        <p>Use <code>super().__init__(...)</code> to call the parent constructor</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Static method</div>
+        <code>@staticmethod / def helper(x): ...</code>
+        <p>No <code>self</code> or <code>cls</code> — pure function scoped to the class</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Class method / factory</div>
+        <code>@classmethod / def from_x(cls, ...): return cls(...)</code>
+        <p>Alternative constructor pattern. Replaces Java's overloaded constructors.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">isinstance check</div>
+        <code>isinstance(obj, MyClass)</code>
+        <p>Respects inheritance. Use instead of <code>type(obj) == MyClass</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Access conventions</div>
+        <code>name / _name / __name</code>
+        <p>public / internal (convention) / name-mangled (subclass-safe)</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Duck typing</div>
+        <code>def fn(obj): obj.method()</code>
+        <p>No interface needed — just call the method. Fails at runtime if absent.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- WRAP-UP -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>__init__</code> is your constructor. Every instance variable must be assigned on <code>self</code> inside it — there's no field declaration block like in Java.</li>
+      <li>Class variables (defined in the class body) are shared across instances — like Java's <code>static</code> fields. Assignment on <code>self</code> creates a new instance variable that shadows the class variable.</li>
+      <li>Inheritance is <code>class Child(Parent)</code>. <code>super()</code> in Python 3 needs no arguments. No <code>@Override</code> annotation — just redefine the method.</li>
+      <li>Python has no access modifiers. Use <code>_name</code> to signal "internal" and <code>__name</code> for name-mangling to prevent accidental override in subclasses.</li>
+      <li>Duck typing means you don't need interfaces for polymorphism. If an object has the right method, it works. Day 43 covers <code>abc.ABC</code> and <code>Protocol</code> for when you want enforcement.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 9</h4>
+      <ul>
+        <li>Create a <code>Shape</code> base class with an <code>area()</code> method, then subclass <code>Circle</code>, <code>Rectangle</code>, and <code>Triangle</code> with correct implementations</li>
+        <li>Add a class variable to track how many shapes have been created, and a <code>@classmethod</code> factory that creates a shape from a config dict</li>
+        <li>Write a function <code>total_area(shapes)</code> that sums areas using duck typing — no isinstance checks needed</li>
+        <li>Experiment with <code>_private</code> vs <code>__mangled</code>: try accessing them from outside the class and from a subclass</li>
+        <li>Implement a <code>Vehicle → Car → ElectricCar</code> hierarchy using <code>super()</code> at each level to extend the constructor</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 9: Dunder Methods + Properties</strong><br>
+      You'll learn how to make your classes behave like built-ins — implement <code>__str__</code>, <code>__eq__</code>, <code>__len__</code>, and more. Plus <code>@property</code> to replace Java's verbose getter/setter pattern with clean attribute access.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day7.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day9.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 8;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

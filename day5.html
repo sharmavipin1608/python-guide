@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 5 — Strings + File I/O | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 5 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 05</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Strings + File I/O</h1>
+  <p>Master string manipulation, regex basics, and file I/O. Learn the context manager pattern and CSV handling — practical skills you'll use every day.</p>
+</div>
+
+<main>
+
+  <!-- ── PLAN ── -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>String methods: split, join, strip, replace, startswith, endswith, upper, lower</li>
+        <li>String slicing: s[1:4], s[::2], s[::-1]</li>
+        <li>Multiline strings with triple quotes</li>
+        <li>Regex basics with re module: search, match, findall, sub</li>
+        <li>Reading and writing files with open()</li>
+        <li>Context manager pattern with open() (preview of Day 12)</li>
+        <li>CSV reading/writing with csv module</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels at a glance</h4>
+      <ul>
+        <li>String methods ≈ Java's <code>String.split()</code>, <code>.replace()</code>, etc. — but more concise</li>
+        <li>String slicing ≈ <code>substring()</code> but far more powerful with negative indices and step</li>
+        <li>Regex ≈ Java's <code>Pattern</code> and <code>Matcher</code> — but without compiling patterns first</li>
+        <li>File I/O ≈ Java's <code>Files.readString()</code> / <code>BufferedReader</code> — simpler API</li>
+        <li><code>with open()</code> ≈ try-with-resources — guaranteed cleanup</li>
+        <li><code>csv</code> module ≈ OpenCSV — built into the standard library</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── STRING METHODS ── -->
+  <section>
+    <h2>1. String Methods</h2>
+
+    <p>Python strings are objects with a rich set of built-in methods. Unlike Java, most return a new string (since strings are immutable) — no <code>StringBuilder</code> needed for simple operations.</p>
+
+    <h3>Splitting and joining</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">String csv = "alice,bob,carol";
+String[] parts = csv.split(",");   // ["alice","bob","carol"]
+String joined = String.join(", ", parts);  // "alice, bob, carol"
+
+// Split with limit
+"a.b.c.d".split("\\.", 2);  // ["a", "b.c.d"]</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">csv = "alice,bob,carol"
+parts = csv.split(",")          # ["alice", "bob", "carol"]
+joined = ", ".join(parts)       # "alice, bob, carol"
+
+# join is called ON the separator, not the list
+# This feels backward at first but makes sense:
+# the separator is a str, and join is a str method
+
+# Split with limit
+"a.b.c.d".split(".", 1)        # ["a", "b.c.d"]
+
+# Split on whitespace (default) — handles multiple spaces
+"  hello   world  ".split()    # ["hello", "world"]</code></pre>
+      </div>
+    </div>
+
+    <h3>Stripping, searching, replacing</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Strip whitespace (or specified chars)
+"  hello  ".strip()       # "hello"
+"  hello  ".lstrip()      # "hello  "
+"  hello  ".rstrip()      # "  hello"
+"###hello###".strip("#")  # "hello"
+
+# Case conversion
+"Hello World".upper()     # "HELLO WORLD"
+"Hello World".lower()     # "hello world"
+"hello world".title()     # "Hello World"
+"hello world".capitalize()# "Hello world" (only first char)
+
+# Checking content
+"hello".startswith("hel")   # True
+"hello".endswith("llo")     # True
+"hello123".isalnum()        # True
+"12345".isdigit()           # True
+"hello".isalpha()           # True
+
+# Finding and replacing
+"hello world".find("world")     # 6  (index, or -1 if not found)
+"hello world".index("world")    # 6  (ValueError if not found)
+"hello world".count("l")        # 3
+"hello world".replace("world", "Python")  # "hello Python"
+"aabbcc".replace("b", "", 1)    # "aabbcc" → replaces first only</code></pre>
+    </div>
+
+    <h3>Chaining methods</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Methods return new strings, so you can chain them
+raw = "  Hello, WORLD!  "
+clean = raw.strip().lower().replace("!", "")
+# "hello, world"
+
+# Practical: normalize user input
+email = "  Alice@Example.COM  ".strip().lower()
+# "alice@example.com"</code></pre>
+    </div>
+  </section>
+
+  <!-- ── STRING SLICING ── -->
+  <section>
+    <h2>2. String Slicing</h2>
+
+    <p>String slicing works exactly like list slicing (Day 4) since strings are sequences too. The syntax is <code>s[start:stop:step]</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">String s = "Hello, World!";
+
+s.substring(0, 5);    // "Hello"
+s.substring(7);       // "World!"
+s.charAt(0);          // 'H'
+
+// Reverse a string (verbose)
+new StringBuilder(s).reverse().toString();</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">s = "Hello, World!"
+
+s[0:5]       # "Hello"
+s[7:]        # "World!"
+s[0]         # "H"
+s[-1]        # "!"  (last char)
+s[-6:]       # "orld!"
+
+# Step
+s[::2]       # "Hlo ol!"  (every 2nd char)
+
+# Reverse a string — one line
+s[::-1]      # "!dlroW ,olleH"
+
+# Check palindrome
+word = "racecar"
+word == word[::-1]   # True</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── MULTILINE ── -->
+  <section>
+    <h2>3. Multiline Strings</h2>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java (15+)</span>
+        <pre><code class="language-java">String sql = """
+        SELECT name, age
+        FROM users
+        WHERE active = true
+        """;</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># Triple quotes — single or double
+sql = """
+SELECT name, age
+FROM users
+WHERE active = true
+"""
+
+# Also great for documentation strings
+# and multi-line messages
+
+# textwrap.dedent cleans up indentation
+from textwrap import dedent
+query = dedent("""
+    SELECT name, age
+    FROM users
+    WHERE active = true
+""").strip()</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── REGEX ── -->
+  <section>
+    <h2>4. Regular Expressions</h2>
+
+    <p>Python's <code>re</code> module provides regex support. Unlike Java, you don't need to create a <code>Pattern</code> object first — though you can compile for repeated use.</p>
+
+    <h3>Core regex functions</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">import java.util.regex.*;
+
+String text = "Call 555-1234 or 555-5678";
+
+// Compile pattern
+Pattern p = Pattern.compile("\\d{3}-\\d{4}");
+Matcher m = p.matcher(text);
+
+// Find first match
+if (m.find()) {
+    m.group();   // "555-1234"
+}
+
+// Find all matches
+List&lt;String&gt; all = new ArrayList&lt;&gt;();
+while (m.find()) {
+    all.add(m.group());
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import re
+
+text = "Call 555-1234 or 555-5678"
+
+# search — find first match anywhere in string
+match = re.search(r"\d{3}-\d{4}", text)
+if match:
+    match.group()   # "555-1234"
+
+# findall — find ALL matches, return as list
+phones = re.findall(r"\d{3}-\d{4}", text)
+# ["555-1234", "555-5678"]
+
+# match — only matches at START of string
+re.match(r"\d+", "123abc")   # match object
+re.match(r"\d+", "abc123")   # None (didn't start with digits)</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Use raw strings!</strong> Always prefix regex patterns with <code>r</code> (like <code>r"\d+"</code>). Without it, Python interprets backslashes as escape sequences before the regex engine sees them. <code>r"\d+"</code> ensures <code>\d</code> reaches the regex engine intact.
+    </div>
+
+    <h3>Substitution and groups</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># sub — search and replace with regex
+text = "Hello World"
+re.sub(r"World", "Python", text)    # "Hello Python"
+
+# Replace with pattern
+phone = "Call (555) 123-4567"
+clean = re.sub(r"[^\d]", "", phone)  # "5551234567" (digits only)
+
+# Groups — capture parts of the match
+match = re.search(r"(\d{3})-(\d{4})", "Call 555-1234")
+match.group(0)   # "555-1234"  (full match)
+match.group(1)   # "555"       (first group)
+match.group(2)   # "1234"      (second group)
+
+# Named groups
+match = re.search(r"(?P&lt;area&gt;\d{3})-(?P&lt;number&gt;\d{4})", "Call 555-1234")
+match.group("area")     # "555"
+match.group("number")   # "1234"
+
+# Compile for reuse (like Java's Pattern.compile)
+email_pattern = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+emails = email_pattern.findall("Contact alice@example.com or bob@test.org")
+# ["alice@example.com", "bob@test.org"]</code></pre>
+    </div>
+  </section>
+
+  <!-- ── FILE I/O ── -->
+  <section>
+    <h2>5. File I/O with open()</h2>
+
+    <p>Python's file I/O is dramatically simpler than Java's. The <code>open()</code> function combined with the <code>with</code> statement handles everything — no <code>BufferedReader</code>, <code>FileInputStream</code>, or <code>try/finally</code> boilerplate.</p>
+
+    <h3>Reading files</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">// Read entire file (Java 11+)
+String content = Files.readString(
+    Path.of("data.txt"));
+
+// Read lines
+List&lt;String&gt; lines = Files.readAllLines(
+    Path.of("data.txt"));
+
+// Buffered reading
+try (var reader = Files.newBufferedReader(
+        Path.of("data.txt"))) {
+    String line;
+    while ((line = reader.readLine()) != null) {
+        System.out.println(line);
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># Read entire file
+with open("data.txt") as f:
+    content = f.read()     # entire file as one string
+
+# Read all lines into a list
+with open("data.txt") as f:
+    lines = f.readlines()  # ["line1\n", "line2\n", ...]
+
+# Iterate line by line (memory-efficient for large files)
+with open("data.txt") as f:
+    for line in f:
+        print(line.strip())  # strip removes trailing \n</code></pre>
+      </div>
+    </div>
+
+    <h3>Writing and appending</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Write (creates or overwrites)
+with open("output.txt", "w") as f:
+    f.write("Hello, World!\n")
+    f.write("Second line\n")
+
+# Append (adds to existing file)
+with open("output.txt", "a") as f:
+    f.write("Appended line\n")
+
+# Write multiple lines at once
+lines = ["line 1\n", "line 2\n", "line 3\n"]
+with open("output.txt", "w") as f:
+    f.writelines(lines)   # does NOT add newlines automatically
+
+# Write with print (convenience)
+with open("output.txt", "w") as f:
+    print("Line 1", file=f)       # adds newline automatically
+    print("Line 2", file=f)</code></pre>
+    </div>
+
+    <h3>The context manager pattern</h3>
+
+    <div class="callout callout-teal">
+      <strong>Why <code>with</code> matters:</strong> The <code>with</code> statement guarantees the file is closed when the block exits — even if an exception occurs. This is Python's equivalent of Java's try-with-resources. You'll see this pattern everywhere: database connections, network sockets, locks. Full deep-dive on Day 12.
+    </div>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — try-with-resources</span>
+        <pre><code class="language-java">try (var writer = new FileWriter("out.txt")) {
+    writer.write("Hello");
+}   // auto-closed here</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — with statement</span>
+        <pre><code class="language-python">with open("out.txt", "w") as writer:
+    writer.write("Hello")
+# auto-closed here
+
+# File modes:
+# "r"  — read (default)
+# "w"  — write (truncate)
+# "a"  — append
+# "x"  — create (fail if exists)
+# "rb" — read binary
+# "wb" — write binary</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CSV ── -->
+  <section>
+    <h2>6. CSV Reading and Writing</h2>
+
+    <p>The <code>csv</code> module is part of Python's standard library — no external dependency needed. It handles quoting, escaping, and delimiters automatically.</p>
+
+    <h3>Reading CSV</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import csv
+
+# Basic CSV reader — returns lists
+with open("users.csv") as f:
+    reader = csv.reader(f)
+    header = next(reader)      # skip header row
+    for row in reader:
+        print(row)             # ["Alice", "30", "NYC"]
+
+# DictReader — each row is a dict (most useful)
+with open("users.csv") as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        print(row["name"], row["age"])
+        # keys come from the header row automatically</code></pre>
+    </div>
+
+    <h3>Writing CSV</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import csv
+
+# Basic writer
+with open("output.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["name", "age", "city"])       # header
+    writer.writerow(["Alice", 30, "NYC"])
+    writer.writerow(["Bob", 25, "London"])
+
+# DictWriter — write from dicts
+users = [
+    {"name": "Alice", "age": 30, "city": "NYC"},
+    {"name": "Bob",   "age": 25, "city": "London"},
+]
+
+with open("output.csv", "w", newline="") as f:
+    fields = ["name", "age", "city"]
+    writer = csv.DictWriter(f, fieldnames=fields)
+    writer.writeheader()     # writes the header row
+    writer.writerows(users)  # writes all data rows</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Note:</strong> Always pass <code>newline=""</code> when opening CSV files for writing. Without it, you may get extra blank lines on Windows. This is a common gotcha.
+    </div>
+
+    <h3>Putting it together — practical file processing</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python — process a log file</span>
+      <pre><code class="language-python">import re
+from collections import Counter
+
+# Read a log file, count error types
+error_counts = Counter()
+
+with open("app.log") as f:
+    for line in f:
+        match = re.search(r"ERROR: (\w+)", line)
+        if match:
+            error_counts[match.group(1)] += 1
+
+# Write a summary report
+with open("error_report.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["Error Type", "Count"])
+    for error, count in error_counts.most_common():
+        writer.writerow([error, count])</code></pre>
+    </div>
+  </section>
+
+  <!-- ── QUICK REFERENCE ── -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Split and join</div>
+        <code>"a,b,c".split(",")</code> → list<br>
+        <code>", ".join(["a","b"])</code> → string<br>
+        <code>"  x  y  ".split()</code> → strips + splits
+        <p>join is called on the separator string</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Strip and case</div>
+        <code>.strip()</code> — both ends<br>
+        <code>.lstrip()</code> / <code>.rstrip()</code> — one end<br>
+        <code>.upper()</code> / <code>.lower()</code> / <code>.title()</code>
+        <p>All return new strings (immutable)</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">String checks</div>
+        <code>.startswith("x")</code> / <code>.endswith("x")</code><br>
+        <code>.isdigit()</code> / <code>.isalpha()</code> / <code>.isalnum()</code><br>
+        <code>"x" in "text"</code> — substring check
+        <p>Returns bool, no regex needed for simple checks</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">String slicing</div>
+        <code>s[1:4]</code> — chars 1 to 3<br>
+        <code>s[-3:]</code> — last 3 chars<br>
+        <code>s[::-1]</code> — reversed string
+        <p>Same syntax as list slicing</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Regex basics</div>
+        <code>re.search(r"pat", s)</code> — first match<br>
+        <code>re.findall(r"pat", s)</code> — all matches<br>
+        <code>re.sub(r"pat", repl, s)</code> — replace
+        <p>Always use raw strings: <code>r"\d+"</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">File reading</div>
+        <code>with open("f") as f:</code><br>
+        <code>&nbsp;&nbsp;f.read()</code> — entire string<br>
+        <code>&nbsp;&nbsp;f.readlines()</code> — list of lines<br>
+        <code>&nbsp;&nbsp;for line in f:</code> — lazy iteration
+        <p><code>with</code> guarantees the file is closed</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">File writing</div>
+        <code>open("f", "w")</code> — write (truncate)<br>
+        <code>open("f", "a")</code> — append<br>
+        <code>f.write("text")</code> — no newline added<br>
+        <code>print("text", file=f)</code> — adds newline
+        <p>Modes: r, w, a, x, rb, wb</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">CSV module</div>
+        <code>csv.reader(f)</code> — rows as lists<br>
+        <code>csv.DictReader(f)</code> — rows as dicts<br>
+        <code>csv.writer(f)</code> / <code>csv.DictWriter(f)</code>
+        <p>Always use <code>newline=""</code> when writing</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── WRAP-UP ── -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Python strings have a rich set of built-in methods (<code>split</code>, <code>join</code>, <code>strip</code>, <code>replace</code>, <code>startswith</code>). They return new strings — strings are immutable.</li>
+      <li>String slicing (<code>s[1:4]</code>, <code>s[::-1]</code>) works identically to list slicing. Use <code>s[::-1]</code> to reverse a string in one expression.</li>
+      <li>The <code>re</code> module handles regex. Use <code>re.search()</code> for first match, <code>re.findall()</code> for all matches, <code>re.sub()</code> for replacement. Always use raw strings (<code>r"\d+"</code>).</li>
+      <li>File I/O with <code>with open()</code> is the idiomatic pattern — guaranteed cleanup like Java's try-with-resources but much less verbose.</li>
+      <li>The <code>csv</code> module's <code>DictReader</code>/<code>DictWriter</code> make CSV processing trivial. Each row becomes a dict keyed by header names.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 6</h4>
+      <ul>
+        <li>Write a script that reads a text file, counts word frequency, and writes the top 10 words to a new file</li>
+        <li>Use regex to extract all email addresses from a block of text</li>
+        <li>Read a CSV, filter rows by a condition, and write the filtered results to a new CSV using <code>DictReader</code>/<code>DictWriter</code></li>
+        <li>Practice string slicing: reverse a string, extract every other character, get the last N characters</li>
+        <li>Chain string methods to clean and normalize messy input data (strip, lower, replace)</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 6: Error Handling + Modules</strong><br>
+      You'll master Python's <code>try/except/else/finally</code> pattern, create custom exceptions, and learn to structure code with modules and the <code>__name__ == '__main__'</code> pattern — Python's equivalent of <code>public static void main</code>.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day4.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day6.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 5;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

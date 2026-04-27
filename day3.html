@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 3 — Functions | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 3 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 03</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Functions</h1>
+  <p>Python functions are first-class objects. Learn default parameters, *args, **kwargs, multiple return values, lambdas, higher-order functions, and get your first taste of decorators.</p>
+</div>
+
+<main>
+
+  <!-- ── PLAN ── -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><span class="topic">Defining functions with def — basics and return</span><span class="time">~8 min</span></li>
+        <li><span class="topic">Default parameter values</span><span class="time">~8 min</span></li>
+        <li><span class="topic">*args — variable positional arguments</span><span class="time">~8 min</span></li>
+        <li><span class="topic">**kwargs — variable keyword arguments</span><span class="time">~8 min</span></li>
+        <li><span class="topic">Returning multiple values with tuples</span><span class="time">~6 min</span></li>
+        <li><span class="topic">Lambda functions</span><span class="time">~6 min</span></li>
+        <li><span class="topic">Functions as first-class objects</span><span class="time">~8 min</span></li>
+        <li><span class="topic">Intro to decorators</span><span class="time">~8 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels at a glance</h4>
+      <ul>
+        <li>Default params ≈ Java method overloading (but far less boilerplate)</li>
+        <li><code>*args</code> ≈ Java varargs <code>String... args</code></li>
+        <li><code>**kwargs</code> — no Java equivalent; closest is <code>Map&lt;String, Object&gt;</code></li>
+        <li>Multiple return values ≈ returning a record/tuple (Java 16+ records)</li>
+        <li>Lambda ≈ Java's lambda <code>x -> x * 2</code> but simpler</li>
+        <li>Functions as arguments ≈ <code>Function&lt;T, R&gt;</code> / functional interfaces</li>
+        <li>Decorators ≈ Spring AOP <code>@Around</code> advice — wrapping method behavior</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── DEFINING FUNCTIONS ── -->
+  <section>
+    <h2>1. Defining Functions</h2>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">// Must declare return type and param types
+public String greet(String name) {
+    return "Hello, " + name + "!";
+}
+
+// void for no return value
+public void printGreeting(String name) {
+    System.out.println(greet(name));
+}
+
+// Call it
+String msg = greet("Alice");
+printGreeting("Bob");</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># def keyword, no return type needed
+def greet(name):
+    return f"Hello, {name}!"
+
+# Functions that don't return: implicitly return None
+def print_greeting(name):
+    print(greet(name))
+
+# Call it
+msg = greet("Alice")
+print_greeting("Bob")
+
+# type hints (optional, for tooling)
+def greet_typed(name: str) -> str:
+    return f"Hello, {name}!"</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Docstrings:</strong> Python functions document themselves with a string literal as the first statement (a docstring). It's accessible via <code>help()</code> and is used by IDEs and tools.
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — docstrings</span>
+      <pre><code class="language-python">def calculate_tax(amount: float, rate: float) -> float:
+    """
+    Calculate tax on an amount.
+
+    Args:
+        amount: The pre-tax amount
+        rate: Tax rate as a decimal (e.g. 0.08 for 8%)
+
+    Returns:
+        The tax amount (not the total)
+    """
+    return amount * rate
+
+help(calculate_tax)   # prints the docstring
+calculate_tax.__doc__ # access it as a string</code></pre>
+    </div>
+  </section>
+
+  <!-- ── DEFAULT PARAMS ── -->
+  <section>
+    <h2>2. Default Parameter Values</h2>
+
+    <p>In Java, you'd create multiple overloaded methods to give parameters optional values. Python handles this in a single function definition.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — overloading</span>
+        <pre><code class="language-java">// Three overloads for "optional" params
+public String connect(String host) {
+    return connect(host, 5432);
+}
+
+public String connect(String host, int port) {
+    return connect(host, port, "mydb");
+}
+
+public String connect(String host, int port,
+                       String db) {
+    return host + ":" + port + "/" + db;
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — default values</span>
+        <pre><code class="language-python"># One function with defaults
+def connect(host, port=5432, db="mydb"):
+    return f"{host}:{port}/{db}"
+
+# Call with just required arg
+connect("localhost")
+# "localhost:5432/mydb"
+
+# Override one default
+connect("localhost", db="orders")
+# "localhost:5432/orders"
+
+# Override all
+connect("prod-db", 5433, "prod")</code></pre>
+      </div>
+    </div>
+
+    <h3>Positional vs keyword arguments</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">def create_user(name, age, role="user", active=True):
+    return {"name": name, "age": age, "role": role, "active": active}
+
+# Positional (order matters)
+create_user("Alice", 30)
+
+# Keyword (order doesn't matter)
+create_user(age=30, name="Alice")
+
+# Mix: positional first, then keyword
+create_user("Alice", 30, role="admin")
+
+# All keyword — most readable for many params
+create_user(name="Alice", age=30, role="admin", active=False)
+
+# You CAN'T: keyword before positional
+# create_user(name="Alice", 30)  # SyntaxError</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Mutable default argument trap — important!</strong> Never use a mutable object (list, dict) as a default value. This is a famous Python gotcha:
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — the mutable default trap</span>
+      <pre><code class="language-python"># WRONG: the list is created ONCE and shared across calls
+def add_item_bad(item, items=[]):
+    items.append(item)
+    return items
+
+add_item_bad("apple")   # ["apple"]
+add_item_bad("banana")  # ["apple", "banana"] ← bug!
+
+# CORRECT: use None as sentinel, create fresh object inside
+def add_item_good(item, items=None):
+    if items is None:
+        items = []
+    items.append(item)
+    return items
+
+add_item_good("apple")   # ["apple"]
+add_item_good("banana")  # ["banana"] ← correct</code></pre>
+    </div>
+  </section>
+
+  <!-- ── *ARGS ── -->
+  <section>
+    <h2>3. *args — Variable Positional Arguments</h2>
+
+    <p><code>*args</code> lets a function accept any number of positional arguments, collecting them into a tuple. It's Python's equivalent of Java's varargs.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — varargs</span>
+        <pre><code class="language-java">public int sum(int... numbers) {
+    int total = 0;
+    for (int n : numbers) {
+        total += n;
+    }
+    return total;
+}
+
+sum(1, 2, 3);         // 6
+sum(1, 2, 3, 4, 5);   // 15</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — *args</span>
+        <pre><code class="language-python">def total(*numbers):   # 'numbers' is a tuple
+    return sum(numbers)
+
+total(1, 2, 3)         # 6
+total(1, 2, 3, 4, 5)  # 15
+
+# Can mix with regular params
+# Regular params MUST come before *args
+def log(level, *messages):
+    for msg in messages:
+        print(f"[{level}] {msg}")
+
+log("INFO", "Server started", "Listening on :8080")
+
+# Unpacking a list into *args with the * operator
+nums = [1, 2, 3]
+total(*nums)   # same as total(1, 2, 3)</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── **KWARGS ── -->
+  <section>
+    <h2>4. **kwargs — Variable Keyword Arguments</h2>
+
+    <p><code>**kwargs</code> collects any extra keyword arguments into a dict. There's no direct Java equivalent — the closest approximation is passing a <code>Map&lt;String, Object&gt;</code>.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">def create_profile(name, **attributes):
+    profile = {"name": name}
+    profile.update(attributes)  # merge the extra kwargs in
+    return profile
+
+# Any keyword args beyond 'name' go into 'attributes' dict
+create_profile("Alice", age=30, city="NYC", role="admin")
+# {"name": "Alice", "age": 30, "city": "NYC", "role": "admin"}
+
+# Iterating over kwargs
+def print_config(**settings):
+    for key, value in settings.items():
+        print(f"  {key}: {value}")
+
+print_config(host="localhost", port=5432, timeout=30)
+
+# Unpacking a dict into **kwargs with the ** operator
+config = {"host": "localhost", "port": 5432}
+print_config(**config)   # same as print_config(host=..., port=...)</code></pre>
+    </div>
+
+    <h3>Full signature order</h3>
+
+    <p>When combining all parameter types, they must appear in this order: <code>positional → *args → keyword-only → **kwargs</code>.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — full parameter signature</span>
+      <pre><code class="language-python">def full_example(
+    required,             # required positional
+    optional="default",   # optional positional with default
+    *args,                # extra positionals → tuple
+    keyword_only,         # after * = keyword-only (no positional)
+    **kwargs              # extra keywords → dict
+):
+    print(required, optional, args, keyword_only, kwargs)
+
+full_example("a", "b", "c", "d", keyword_only="kw", x=1, y=2)
+# a  b  ('c', 'd')  kw  {'x': 1, 'y': 2}
+
+# Keyword-only params are a great pattern for API design:
+def send_email(to, subject, *, cc=None, bcc=None):
+    # cc and bcc must be passed as keywords
+    # Prevents mistakes like send_email("a@b.com", "Hi", "c@b.com")
+    pass</code></pre>
+    </div>
+  </section>
+
+  <!-- ── MULTIPLE RETURN ── -->
+  <section>
+    <h2>5. Returning Multiple Values</h2>
+
+    <p>Python functions can return multiple values by returning a tuple. The caller can unpack them directly.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — need a wrapper</span>
+        <pre><code class="language-java">// Java 16+ record as return type
+record MinMax(int min, int max) {}
+
+public MinMax findMinMax(int[] nums) {
+    int min = nums[0], max = nums[0];
+    for (int n : nums) {
+        if (n < min) min = n;
+        if (n > max) max = n;
+    }
+    return new MinMax(min, max);
+}
+
+MinMax result = findMinMax(arr);
+System.out.println(result.min() + " " + result.max());</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — tuples</span>
+        <pre><code class="language-python">def find_min_max(nums):
+    return min(nums), max(nums)  # returns a tuple
+
+# Tuple unpacking — most common usage
+low, high = find_min_max([3, 1, 4, 1, 5, 9])
+print(low, high)   # 1  9
+
+# Can also capture as tuple
+result = find_min_max([3, 1, 4])
+print(result)       # (1, 4)
+print(result[0])    # 1
+
+# Ignore parts with _
+low, _ = find_min_max([3, 1, 4])   # only care about min</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── LAMBDAS ── -->
+  <section>
+    <h2>6. Lambda Functions</h2>
+
+    <p>Lambdas are anonymous single-expression functions. In Python they're limited to one expression — no statements, no multi-line logic. For anything complex, use a named <code>def</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java lambdas</span>
+        <pre><code class="language-java">// Single param
+Function&lt;Integer, Integer&gt; square = x -> x * x;
+
+// Two params
+BiFunction&lt;Integer, Integer, Integer&gt; add =
+    (a, b) -> a + b;
+
+// With block body
+Function&lt;String, String&gt; trim =
+    s -> {
+        String result = s.strip();
+        return result.toLowerCase();
+    };
+
+// Sorting with comparator
+list.sort((a, b) -> a.length() - b.length());</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python lambdas</span>
+        <pre><code class="language-python"># lambda params: expression
+square = lambda x: x * x
+add = lambda a, b: a + b
+
+# Single expression only — no multi-line
+# For complex logic, use def instead
+
+# Common use: inline sort key
+words = ["banana", "apple", "fig", "cherry"]
+words.sort(key=lambda w: len(w))
+# ["fig", "apple", "banana", "cherry"]
+
+# Or with built-in sorted()
+sorted_words = sorted(words, key=lambda w: w[-1])  # sort by last letter
+
+# Sort dicts by a field
+users = [{"name": "Bob", "age": 25}, {"name": "Alice", "age": 30}]
+users.sort(key=lambda u: u["age"])
+
+# Prefer operator.attrgetter/itemgetter for simple cases
+from operator import itemgetter
+users.sort(key=itemgetter("age"))  # same result, no lambda needed</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── FIRST-CLASS FUNCTIONS ── -->
+  <section>
+    <h2>7. Functions as First-Class Objects</h2>
+
+    <p>In Python, functions are objects. You can pass them as arguments, return them from other functions, and store them in data structures. This is used constantly in Python frameworks and libraries.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — functional interfaces</span>
+        <pre><code class="language-java">// Must use Function<T,R> or custom @FunctionalInterface
+Function&lt;Integer, Integer&gt; doubler = x -> x * 2;
+
+public List&lt;Integer&gt; applyToAll(
+    List&lt;Integer&gt; nums,
+    Function&lt;Integer, Integer&gt; fn
+) {
+    return nums.stream()
+        .map(fn)
+        .collect(Collectors.toList());
+}
+
+applyToAll(List.of(1,2,3), doubler);</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — functions as values</span>
+        <pre><code class="language-python"># Functions are just objects — no wrapper needed
+def double(x):
+    return x * 2
+
+def square(x):
+    return x * x
+
+# Pass function as argument
+def apply_to_all(nums, fn):
+    return [fn(n) for n in nums]
+
+apply_to_all([1, 2, 3], double)   # [2, 4, 6]
+apply_to_all([1, 2, 3], square)   # [1, 4, 9]
+
+# Store functions in a dict — dispatch table
+# (replaces if/elif chains or switch in some cases)
+operations = {
+    "double": double,
+    "square": square,
+    "negate": lambda x: -x,
+}
+
+op = operations["square"]
+op(5)   # 25</code></pre>
+      </div>
+    </div>
+
+    <h3>Higher-order functions: map, filter, sorted</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">nums = [1, 2, 3, 4, 5]
+
+# map() — apply function to each element (returns iterator)
+doubled = list(map(double, nums))   # [2, 4, 6, 8, 10]
+
+# filter() — keep elements where function returns True
+evens = list(filter(lambda n: n % 2 == 0, nums))  # [2, 4]
+
+# sorted() with key function
+words = ["banana", "apple", "fig"]
+sorted(words, key=len)                # ["fig", "apple", "banana"]
+sorted(words, key=str.upper)          # alphabetical, case-insensitive
+
+# Prefer list comprehensions over map/filter — more Pythonic:
+doubled = [double(n) for n in nums]  # clearer
+evens   = [n for n in nums if n % 2 == 0]  # clearer</code></pre>
+    </div>
+
+    <h3>Closures — functions that remember their environment</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">def make_multiplier(factor):
+    # 'factor' is captured from the outer scope
+    def multiply(x):
+        return x * factor   # 'factor' lives on even after make_multiplier returns
+    return multiply
+
+triple = make_multiplier(3)
+triple(10)   # 30
+
+# This is how decorators work internally — a function wrapping a function</code></pre>
+    </div>
+  </section>
+
+  <!-- ── DECORATORS INTRO ── -->
+  <section>
+    <h2>8. Intro to Decorators</h2>
+
+    <p>A decorator is a function that wraps another function to extend its behavior without modifying the original. You've seen them as annotations in Java — <code>@Override</code>, <code>@Transactional</code>, <code>@Cacheable</code>. Python decorators are similar in intent but implemented differently: they're actual functions that wrap other functions.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — AOP / annotations</span>
+        <pre><code class="language-java">// @Transactional wraps the method in a transaction
+// without you writing transaction code in the method itself
+@Transactional
+public void saveUser(User user) {
+    repo.save(user);
+}
+
+// @Cacheable caches the result
+@Cacheable("users")
+public User findById(Long id) {
+    return repo.findById(id);
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — decorators</span>
+        <pre><code class="language-python">import time
+
+# A simple timing decorator
+def timer(func):
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)   # call the original
+        end = time.time()
+        print(f"{func.__name__} took {end - start:.3f}s")
+        return result
+    return wrapper
+
+# Apply decorator with @ syntax
+@timer
+def slow_operation():
+    time.sleep(0.5)
+    return "done"
+
+slow_operation()   # prints "slow_operation took 0.500s"
+
+# @timer is syntactic sugar for:
+# slow_operation = timer(slow_operation)</code></pre>
+      </div>
+    </div>
+
+    <div class="callout callout-teal">
+      <strong>Full decorator coverage is Day 11.</strong> Today just understand the concept: a decorator is a function that takes a function, wraps it in another function, and returns the wrapper. The <code>@decorator</code> syntax applies it cleanly.
+    </div>
+
+    <h3>Built-in decorators you'll use immediately</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python — built-in decorators</span>
+      <pre><code class="language-python">from functools import lru_cache
+
+# @lru_cache — memoize expensive function results
+@lru_cache(maxsize=128)
+def fibonacci(n):
+    if n < 2:
+        return n
+    return fibonacci(n - 1) + fibonacci(n - 2)
+
+fibonacci(100)   # fast — cached results reused
+
+# @staticmethod — no self, no cls (like Java static method)
+class MathUtils:
+    @staticmethod
+    def add(a, b):
+        return a + b
+
+MathUtils.add(1, 2)  # no instance needed
+
+# @classmethod — receives the class itself as first arg
+class Counter:
+    count = 0
+
+    @classmethod
+    def increment(cls):
+        cls.count += 1</code></pre>
+    </div>
+
+    <h3>Putting it all together — a practical function design</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python — real-world function design</span>
+      <pre><code class="language-python">import time
+from functools import wraps
+
+def retry(max_attempts=3, delay=1.0):
+    """Decorator factory: retries a function on exception."""
+    def decorator(func):
+        @wraps(func)  # preserves func.__name__, __doc__
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_attempts:
+                        raise
+                    print(f"Attempt {attempt} failed: {e}. Retrying...")
+                    time.sleep(delay)
+        return wrapper
+    return decorator
+
+# Usage — reads like a configuration
+@retry(max_attempts=3, delay=0.5)
+def fetch_data(url):
+    # might raise requests.RequestException
+    pass</code></pre>
+    </div>
+  </section>
+
+  <!-- ── QUICK REFERENCE ── -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">def syntax</div>
+        <code>def name(param1, param2):</code><br>
+        <code>&nbsp;&nbsp;&nbsp;&nbsp;return value</code><br>
+        <code>def typed(x: int) -> str:</code>
+        <p>Return None implicitly if no return statement</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Default params</div>
+        <code>def f(x, y=10, z="hi"):</code><br>
+        <code>f(1)</code> → uses defaults<br>
+        <code>f(1, z="bye")</code> → keyword override
+        <p>Never use mutable defaults (list/dict) — use None</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">*args</div>
+        <code>def f(*args):</code> → args is a tuple<br>
+        <code>f(1, 2, 3)</code> → args = (1, 2, 3)<br>
+        <code>f(*[1,2,3])</code> → unpack list
+        <p>Like Java varargs but collected as tuple</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">**kwargs</div>
+        <code>def f(**kwargs):</code> → kwargs is a dict<br>
+        <code>f(a=1, b=2)</code> → kwargs = {'a':1,'b':2}<br>
+        <code>f(**{'a':1,'b':2})</code> → unpack dict
+        <p>No Java equivalent; use for flexible APIs</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Multiple return</div>
+        <code>return a, b</code> → returns tuple<br>
+        <code>x, y = f()</code> → unpack<br>
+        <code>x, _ = f()</code> → ignore second
+        <p>No need for wrapper class / record</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Lambda</div>
+        <code>lambda x: x * 2</code><br>
+        <code>lambda a, b: a + b</code><br>
+        <code>sorted(xs, key=lambda x: x.age)</code>
+        <p>Single expression only — use def for anything complex</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">First-class functions</div>
+        <code>def apply(fn, x): return fn(x)</code><br>
+        <code>ops = {"add": add, "mul": mul}</code><br>
+        <code>ops["add"](2, 3)</code>
+        <p>No wrapper interface needed — just pass the function</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Decorator</div>
+        <code>@decorator</code><br>
+        <code>def my_func(): ...</code><br>
+        <code># = my_func = decorator(my_func)</code>
+        <p>Wraps a function without modifying it; full coverage Day 11</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Keyword-only params</div>
+        <code>def f(a, *, b, c=1):</code><br>
+        <code>f(1, b=2)</code> → ok<br>
+        <code>f(1, 2)</code> → TypeError
+        <p>After * all params must be passed as keywords</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── WRAP-UP ── -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Python functions replace Java method overloading via default parameter values — one function, not five overloads.</li>
+      <li><code>*args</code> collects extra positional arguments into a tuple (like Java varargs). <code>**kwargs</code> collects extra keyword arguments into a dict (no Java equivalent).</li>
+      <li>Returning multiple values via tuple unpacking (<code>x, y = f()</code>) is idiomatic and avoids wrapper classes for simple cases.</li>
+      <li>Functions are first-class objects — pass them around, store them in dicts, return them from other functions. This is the foundation of decorators, callbacks, and functional patterns.</li>
+      <li>Decorators wrap functions to add behavior without modifying the original — like Spring AOP but simpler. You'll build your own on Day 11.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 4</h4>
+      <ul>
+        <li>Write a function <code>stats(*numbers)</code> that returns (min, max, mean) as a tuple</li>
+        <li>Write a function that accepts <code>**options</code> and pretty-prints the config key-value pairs</li>
+        <li>Use a dispatch dict of functions to implement a simple calculator: <code>calc("+", 3, 4)</code></li>
+        <li>Write a <code>timer</code> decorator and apply it to a function that does some work</li>
+        <li>Use <code>sorted()</code> with a lambda key on a list of dicts sorted by multiple fields</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 4: Data Structures</strong><br>
+      Lists, tuples, dicts, and sets — with all their operations. You'll learn which to use when, plus tuple unpacking and dict merging with <code>**</code>. These are the containers you'll use in every Python program.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day2.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day4.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 3;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

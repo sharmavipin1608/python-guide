@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 56 — Capstone Project | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+    .day-badge { background: #ff6b35; color: #fff; }
+
+    .option-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 24px 0; }
+    @media (max-width: 680px) { .option-selector { grid-template-columns: 1fr; } }
+
+    .option-card { background: #141414; border: 2px solid #2a2a2a; border-radius: 12px; padding: 24px; cursor: pointer; transition: all 0.2s ease; }
+    .option-card:hover { border-color: #f0e040; }
+    .option-card.selected { border-color: #f0e040; background: #1a1a0d; }
+    .option-card h3 { font-size: 1.1rem; color: #f0e040; margin-bottom: 8px; }
+    .option-card p { font-size: 0.88rem; color: #888; margin: 0; }
+    .option-card .stack { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .option-card .stack span { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; background: #1f1f1f; color: #40e0b0; padding: 2px 8px; border-radius: 4px; border: 1px solid #2a3d2a; }
+
+    .milestone { background: #141414; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px 20px; margin: 12px 0; }
+    .milestone-num { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #555; margin-bottom: 6px; }
+    .milestone h4 { font-size: 0.95rem; color: #e0e0e0; margin-bottom: 6px; }
+    .milestone p { font-size: 0.85rem; color: #888; margin: 0; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 56 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 56 — Capstone</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Capstone Project</h1>
+  <p>Day 56 of 56. You've covered the whole language, the ecosystem, and production patterns. Now build something real. Two options — pick the one that aligns with what you'll actually use Python for.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Choose Your Project</h2>
+
+    <div class="option-selector">
+      <div class="option-card">
+        <h3>Option A — Real Estate Automation</h3>
+        <p>A FastAPI service that scrapes property listings, stores them in a DB, sends email digests when new listings match your criteria, and exposes a query API.</p>
+        <div class="stack">
+          <span>FastAPI</span><span>SQLAlchemy</span><span>BeautifulSoup</span>
+          <span>Celery</span><span>smtplib</span><span>Docker</span>
+        </div>
+      </div>
+      <div class="option-card">
+        <h3>Option B — AI Dev Tool</h3>
+        <p>A LangChain + FastAPI service that indexes your codebase into ChromaDB and lets you ask questions about it — answers include file paths and line references.</p>
+        <div class="stack">
+          <span>FastAPI</span><span>LangChain</span><span>ChromaDB</span>
+          <span>OpenAI</span><span>asyncio</span><span>Docker</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- OPTION A -->
+  <section>
+    <h2>Option A — Real Estate Automation</h2>
+
+    <div class="spec-box">
+      <h3>Project Spec</h3>
+      <ul>
+        <li><strong>What:</strong> An automated property listing monitor. Scrape listings on a schedule, store new ones in a DB, match against saved search criteria, send email alerts for matches.</li>
+        <li><strong>Endpoints:</strong> POST /searches (save a search criterion), GET /listings (query stored listings), GET /listings/new (listings added in last 24h), POST /scrape (trigger a manual scrape)</li>
+        <li><strong>Scraper:</strong> BeautifulSoup or Playwright — scrapes price, bedrooms, location, URL from a listing site</li>
+        <li><strong>Background:</strong> Celery Beat triggers the scraper every hour; Celery worker sends email alerts on matches</li>
+        <li><strong>Storage:</strong> SQLAlchemy + SQLite (or Postgres via docker-compose)</li>
+        <li><strong>Covers:</strong> FastAPI, SQLAlchemy, BeautifulSoup (Day 53), Celery (Day 40), smtplib (Day 52), Docker (Day 33), config (Day 34)</li>
+      </ul>
+    </div>
+
+    <div class="stretch-box">
+      <strong>Stretch Goal:</strong> Deploy to a VPS with Docker + nginx as a reverse proxy. Add a simple HTML front end (no framework needed — just Jinja2 templates served by FastAPI) to display listings and manage saved searches.
+    </div>
+
+    <h3>Architecture</h3>
+    <div class="python-block">
+      <span class="block-label">file layout</span>
+      <pre><code class="language-text">realestate_monitor/
+  docker-compose.yml        # FastAPI + Redis + (Postgres optional)
+  Dockerfile
+  pyproject.toml
+  .env.example
+  src/
+    realestate/
+      __init__.py
+      config.py             # BaseSettings
+      models.py             # Listing, SavedSearch SQLAlchemy models
+      schemas.py            # Pydantic request/response
+      database.py           # engine, get_db
+      scraper.py            # BeautifulSoup / Playwright scraper
+      matcher.py            # match listings to saved searches
+      notifier.py           # smtplib email alerts
+      tasks.py              # Celery tasks
+      celery_app.py         # Celery + Beat config
+      routers/
+        listings.py
+        searches.py
+      main.py               # FastAPI app
+  tests/</code></pre>
+    </div>
+
+    <h3>Milestone Plan</h3>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 1 — ~1 hour</div>
+      <h4>Core Models + API skeleton</h4>
+      <p>Define <code>Listing</code> and <code>SavedSearch</code> SQLAlchemy models. Wire up FastAPI with the four endpoints returning stub data. Get <code>uvicorn main:app --reload</code> running.</p>
+    </div>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 2 — ~1 hour</div>
+      <h4>Scraper</h4>
+      <p>Write the scraper against your target site. Start with BeautifulSoup on a static listing page. Extract: title, price, bedrooms, location, URL, scraped_at. Store each new listing in the DB (deduplicate by URL).</p>
+    </div>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 3 — ~1 hour</div>
+      <h4>Celery + Scheduled Scraping</h4>
+      <p>Add Celery with Redis broker. Define a <code>scrape_listings</code> task. Configure Beat to run it every hour. Verify it runs automatically and stores results.</p>
+    </div>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 4 — ~30 min</div>
+      <h4>Matching + Email Alerts</h4>
+      <p>After scraping, compare new listings against saved search criteria (price range, bedrooms, location). If a match is found, call <code>notifier.send_alert()</code> via a Celery task.</p>
+    </div>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 5 — ~30 min</div>
+      <h4>Docker Compose</h4>
+      <p>Write Dockerfile + docker-compose.yml with FastAPI, Celery worker, Celery Beat, and Redis services. Verify <code>docker-compose up</code> starts everything and the scraper runs on schedule.</p>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — key patterns to use</span>
+      <pre><code class="language-python"># models.py
+from sqlalchemy.orm import Mapped, mapped_column
+from database import Base
+from datetime import datetime, timezone
+
+class Listing(Base):
+    __tablename__ = "listings"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    url: Mapped[str] = mapped_column(unique=True, index=True)  # dedup key
+    title: Mapped[str]
+    price: Mapped[float | None]
+    bedrooms: Mapped[int | None]
+    location: Mapped[str | None]
+    scraped_at: Mapped[datetime] = mapped_column(
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+# tasks.py
+from celery_app import celery_app
+from scraper import scrape_all
+from matcher import find_matches
+from notifier import send_alert
+import structlog
+
+log = structlog.get_logger()
+
+@celery_app.task(name="tasks.scrape_and_notify")
+def scrape_and_notify() -> dict:
+    new_listings = scrape_all()
+    log.info("scrape_complete", new_listings=len(new_listings))
+    matches = find_matches(new_listings)
+    for match in matches:
+        send_alert(match)
+    return {"new": len(new_listings), "alerts_sent": len(matches)}
+
+# celery_app.py — Beat schedule
+celery_app.conf.beat_schedule = {
+    "hourly-scrape": {
+        "task": "tasks.scrape_and_notify",
+        "schedule": 3600.0,   # every hour
+    },
+}</code></pre>
+    </div>
+  </section>
+
+  <!-- OPTION B -->
+  <section>
+    <h2>Option B — AI Dev Tool: Chat With Your Codebase</h2>
+
+    <div class="spec-box">
+      <h3>Project Spec</h3>
+      <ul>
+        <li><strong>What:</strong> A FastAPI service that indexes Python source files into ChromaDB and answers questions about the codebase — with file path and approximate line number references in the answer.</li>
+        <li><strong>Endpoints:</strong> POST /index (index a directory of .py files), GET /index/status (how many files/chunks indexed), POST /chat (ask a question, get answer + sources), DELETE /index (clear and re-index)</li>
+        <li><strong>Indexing:</strong> Walk a directory, read each .py file, chunk by function/class boundary (not arbitrary character count), embed with OpenAI or sentence-transformers, store in ChromaDB with metadata: file, start_line, end_line, symbol_name</li>
+        <li><strong>RAG:</strong> Retrieve top-k relevant chunks, inject as context, answer with GPT-4o-mini, return source references</li>
+        <li><strong>Covers:</strong> FastAPI, LangChain, ChromaDB (Days 36–38), OpenAI SDK (Day 39), asyncio, structlog (Day 41), Docker (Day 33)</li>
+      </ul>
+    </div>
+
+    <div class="stretch-box">
+      <strong>Stretch Goal:</strong> Add conversation memory per session (sliding window, Day 39 pattern). Add a <code>POST /chat/stream</code> endpoint that streams the answer token-by-token via SSE. Deploy to a VPS with Docker + nginx.
+    </div>
+
+    <h3>Architecture</h3>
+    <div class="python-block">
+      <span class="block-label">file layout</span>
+      <pre><code class="language-text">codebase_chat/
+  docker-compose.yml
+  Dockerfile
+  pyproject.toml
+  .env.example
+  src/
+    codebase_chat/
+      __init__.py
+      config.py             # BaseSettings
+      indexer.py            # AST-based chunking + ChromaDB ingestion
+      retriever.py          # semantic search wrapper
+      chatbot.py            # RAG chain — retrieve + generate
+      schemas.py            # Pydantic request/response models
+      routers/
+        index.py            # indexing endpoints
+        chat.py             # chat endpoints
+      main.py
+  tests/
+  chroma_db/               # persisted ChromaDB (gitignored)</code></pre>
+    </div>
+
+    <h3>Milestone Plan</h3>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 1 — ~45 min</div>
+      <h4>AST-based Chunking</h4>
+      <p>Use Python's <code>ast</code> module to walk source files and extract function/class definitions as chunks — each chunk carries metadata: file path, start line, end line, symbol name. This is much better than character-count chunking for code.</p>
+    </div>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 2 — ~45 min</div>
+      <h4>Indexer + ChromaDB</h4>
+      <p>Walk a directory with <code>pathlib.Path.rglob("*.py")</code>, chunk each file, embed and store in a persistent ChromaDB collection. Track which files are indexed (hash-based deduplication so re-indexing only processes changed files).</p>
+    </div>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 3 — ~45 min</div>
+      <h4>RAG Chain + API</h4>
+      <p>Build the retriever and chatbot using the Day 42 pattern. Wire up the FastAPI endpoints. The answer should reference specific files and line numbers from the retrieved chunks.</p>
+    </div>
+
+    <div class="milestone">
+      <div class="milestone-num">MILESTONE 4 — ~30 min</div>
+      <h4>Docker + Polish</h4>
+      <p>Dockerfile + docker-compose. Add structlog middleware. Test on your own Python projects — index the Day 35 task manager and ask it questions about the codebase.</p>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — AST-based code chunker</span>
+      <pre><code class="language-python">import ast
+from dataclasses import dataclass
+from pathlib import Path
+
+@dataclass
+class CodeChunk:
+    content: str
+    file_path: str
+    start_line: int
+    end_line: int
+    symbol_name: str    # function or class name
+    symbol_type: str    # "function" or "class"
+
+def chunk_python_file(filepath: Path) -> list[CodeChunk]:
+    """Extract top-level functions and classes as chunks."""
+    source = filepath.read_text(encoding="utf-8")
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+
+    lines = source.splitlines()
+    chunks = []
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        # Only top-level definitions (depth == 1 in module)
+        if not hasattr(node, "lineno"):
+            continue
+
+        start = node.lineno - 1
+        end = node.end_lineno
+        content = "\n".join(lines[start:end])
+
+        chunks.append(CodeChunk(
+            content=content,
+            file_path=str(filepath),
+            start_line=node.lineno,
+            end_line=node.end_lineno,
+            symbol_name=node.name,
+            symbol_type="class" if isinstance(node, ast.ClassDef) else "function",
+        ))
+
+    # Also include module-level docstring if present
+    if (isinstance(tree.body[0], ast.Expr)
+            and isinstance(tree.body[0].value, ast.Constant)):
+        docstring = tree.body[0].value.value
+        chunks.insert(0, CodeChunk(
+            content=f"# {filepath.name}\n{docstring}",
+            file_path=str(filepath),
+            start_line=1,
+            end_line=tree.body[0].end_lineno,
+            symbol_name="module_docstring",
+            symbol_type="module",
+        ))
+
+    return chunks
+
+def chunk_directory(root: Path, pattern: str = "**/*.py") -> list[CodeChunk]:
+    all_chunks = []
+    for filepath in root.rglob(pattern):
+        if "__pycache__" in str(filepath):
+            continue
+        all_chunks.extend(chunk_python_file(filepath))
+    return all_chunks</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — index chunks into ChromaDB</span>
+      <pre><code class="language-python">import chromadb
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from config import get_settings
+
+def get_collection() -> chromadb.Collection:
+    settings = get_settings()
+    client = chromadb.PersistentClient(path=settings.chroma_path)
+    embedding_fn = OpenAIEmbeddingFunction(
+        api_key=settings.openai_api_key,
+        model_name="text-embedding-3-small",
+    )
+    return client.get_or_create_collection("codebase", embedding_function=embedding_fn)
+
+def index_chunks(chunks: list[CodeChunk]) -> int:
+    collection = get_collection()
+    collection.add(
+        documents=[c.content for c in chunks],
+        ids=[f"{c.file_path}:{c.start_line}" for c in chunks],
+        metadatas=[{
+            "file": c.file_path,
+            "start_line": c.start_line,
+            "end_line": c.end_line,
+            "symbol": c.symbol_name,
+            "type": c.symbol_type,
+        } for c in chunks],
+    )
+    return len(chunks)
+
+# RAG prompt with source citations
+SYSTEM_PROMPT = """You are an expert assistant for a Python codebase.
+Answer the developer's question using ONLY the code snippets provided.
+For each point, cite the source like: [file.py:line_number]
+
+Code context:
+{context}"""</code></pre>
+    </div>
+  </section>
+
+  <!-- WHAT YOU'VE LEARNED -->
+  <section>
+    <h2>56 Days — What You've Covered</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Phase 1 — Foundation (Days 1–14)</div>
+        <p>Variables, control flow, functions, data structures, OOP, dunder methods, iterators, generators, decorators, context managers, type hints, dataclasses</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Phase 2 — Core Libraries (Days 15–28)</div>
+        <p>collections, itertools, functools, pathlib, datetime, requests, httpx, concurrency, asyncio, NumPy, Pandas, pytest</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Phase 3 — Backend + AI (Days 29–42)</div>
+        <p>FastAPI, SQLAlchemy, Pydantic, Docker, config patterns, LangChain, agents, ChromaDB, OpenAI SDK, Celery, logging, RAG</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Phase 4 — Advanced (Days 43–56)</div>
+        <p>ABCs, Protocols, metaclasses, __slots__, Python internals, profiling, packaging, Click, design patterns, CI/CD, scripting, scraping, ML stack</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>You started this guide as a Java developer who knew nothing about Python. You end it able to build production FastAPI services, AI-powered applications, CLI tools, data pipelines, and automation scripts — idiomatically.</li>
+      <li>The capstone is not the end — it's the beginning. Pick a real project (one of these two, or your own) and build it. Reading and doing are not the same thing; shipping something is where the learning solidifies.</li>
+      <li>Python's ecosystem moves fast. LangChain, FastAPI, and Pydantic all had major breaking changes in 2024. Get in the habit of watching GitHub releases and changelogs for the libraries you depend on.</li>
+      <li>The Java experience you brought to this guide is an asset, not a liability. You understand systems thinking, data modelling, concurrency, testing discipline, and production concerns. Python just gives you a faster path to expressing those skills.</li>
+      <li>Congratulations. 56 days. You're a Python developer now.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>After Day 56</h4>
+      <ul>
+        <li>Build the capstone project — don't just read it</li>
+        <li>Contribute to one open-source Python project, even a documentation fix</li>
+        <li>Write a Python tool that solves a real problem in your daily work</li>
+        <li>Revisit days 1–14 in 3 months — you'll understand them differently now</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day55.html" class="nav-btn">← Day 55: Review</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done ✓</button>
+  <a href="index.html" class="nav-btn">Back to All Days →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-56-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-56-done') === 'true';
+    localStorage.setItem('day-56-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

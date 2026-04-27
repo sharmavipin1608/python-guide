@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 6 — Error Handling + Modules | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 6 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 06</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Error Handling + Modules</h1>
+  <p>Master exception handling with try/except/else/finally, create custom exceptions, and learn to structure code with modules — Python's package system.</p>
+</div>
+
+<main>
+
+  <!-- ── PLAN ── -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>try / except / else / finally</li>
+        <li>Catching specific exceptions vs bare except</li>
+        <li>Raising exceptions with raise</li>
+        <li>Creating custom exception classes (like Java custom exceptions)</li>
+        <li>Importing modules: import, from x import y, as aliasing</li>
+        <li>Creating your own module</li>
+        <li>__name__ == '__main__' pattern — Python's entry point equivalent</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels at a glance</h4>
+      <ul>
+        <li><code>try/except</code> ≈ Java's <code>try/catch</code></li>
+        <li><code>else</code> block — runs only if no exception (no Java equivalent)</li>
+        <li><code>finally</code> ≈ Java's <code>finally</code> — guaranteed execution</li>
+        <li>Custom exceptions ≈ extending <code>Exception</code> in Java</li>
+        <li>Modules ≈ Java packages + import statements</li>
+        <li><code>__name__ == '__main__'</code> ≈ <code>public static void main(String[] args)</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── TRY/EXCEPT ── -->
+  <section>
+    <h2>1. try / except / else / finally</h2>
+
+    <p>Python's error handling is similar to Java's try/catch but with a twist: the <code>else</code> clause runs only when no exception occurred. This lets you separate "happy path" code from error handling cleanly.</p>
+
+    <h3>Basic exception handling</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">try {
+    int result = Integer.parseInt(input);
+    System.out.println("Parsed: " + result);
+} catch (NumberFormatException e) {
+    System.out.println("Invalid number: " + e.getMessage());
+} finally {
+    System.out.println("Always runs");
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">try:
+    result = int(input_str)
+    print(f"Parsed: {result}")
+except ValueError as e:
+    print(f"Invalid number: {e}")
+finally:
+    print("Always runs")</code></pre>
+      </div>
+    </div>
+
+    <h3>Catching specific exception types</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Catch multiple specific types
+try:
+    value = my_dict[key]
+    result = 10 / value
+except KeyError:
+    print(f"Key '{key}' not found")
+except ZeroDivisionError:
+    print("Cannot divide by zero")
+except (TypeError, ValueError) as e:
+    # Catch multiple types in one block
+    print(f"Bad value: {e}")
+
+# Access the exception object with 'as'
+try:
+    open("nonexistent.txt")
+except FileNotFoundError as e:
+    print(f"File error: {e}")
+    print(f"Filename: {e.filename}")   # exception attributes</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Never use bare <code>except:</code></strong> — it catches everything including <code>KeyboardInterrupt</code> and <code>SystemExit</code>, making it impossible to Ctrl+C your program. At minimum, catch <code>Exception</code> which excludes those. Better: catch the specific exceptions you expect.
+    </div>
+
+    <h3>The else clause — Python's unique advantage</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># else runs ONLY if no exception was raised in try
+try:
+    f = open("config.json")
+except FileNotFoundError:
+    print("Config file missing, using defaults")
+    config = {}
+else:
+    # Only runs if open() succeeded
+    # Errors HERE are NOT caught by the except above
+    config = json.load(f)
+    f.close()
+    print("Config loaded successfully")
+finally:
+    # Always runs — cleanup
+    print("Config loading complete")</code></pre>
+    </div>
+
+    <div class="callout callout-teal">
+      <strong>Why else matters:</strong> Without <code>else</code>, you'd put the success code inside <code>try</code>. But then any exception from that code gets caught too, masking bugs. <code>else</code> keeps the try block narrow — only the code that might throw the expected exception goes in <code>try</code>.
+    </div>
+
+    <h3>The full pattern</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python — complete error handling</span>
+      <pre><code class="language-python">def read_config(path):
+    """Read and parse a JSON config file."""
+    try:
+        f = open(path)                       # might raise FileNotFoundError
+    except FileNotFoundError:
+        print(f"Config not found: {path}")
+        return {}                            # return default
+    except PermissionError:
+        print(f"No permission to read: {path}")
+        return {}
+    else:
+        # File opened successfully — parse it
+        import json
+        try:
+            return json.load(f)              # might raise json.JSONDecodeError
+        except json.JSONDecodeError as e:
+            print(f"Invalid JSON: {e}")
+            return {}
+    finally:
+        # Cleanup — this runs no matter what
+        print("Config read attempt complete")</code></pre>
+    </div>
+  </section>
+
+  <!-- ── RAISING EXCEPTIONS ── -->
+  <section>
+    <h2>2. Raising Exceptions</h2>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">public void setAge(int age) {
+    if (age < 0) {
+        throw new IllegalArgumentException(
+            "Age cannot be negative: " + age);
+    }
+    this.age = age;
+}
+
+// Re-throwing
+try {
+    riskyOperation();
+} catch (IOException e) {
+    logger.error("Failed", e);
+    throw e;   // re-throw
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">def set_age(age):
+    if age < 0:
+        raise ValueError(f"Age cannot be negative: {age}")
+    return age
+
+# Re-raising the current exception
+try:
+    risky_operation()
+except OSError as e:
+    logger.error(f"Failed: {e}")
+    raise          # re-raise without arguments
+
+# Raise a different exception, keeping the original as cause
+try:
+    config = json.loads(raw_data)
+except json.JSONDecodeError as e:
+    raise ValueError("Invalid config format") from e
+    # 'from e' chains the exceptions (like Java's cause)</code></pre>
+      </div>
+    </div>
+
+    <h3>Common built-in exceptions</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python — exceptions you'll see most often</span>
+      <pre><code class="language-python"># ValueError — wrong value for the type
+int("abc")                  # ValueError
+
+# TypeError — wrong type for an operation
+"hello" + 42                # TypeError
+
+# KeyError — dict key not found
+{}["missing"]               # KeyError
+
+# IndexError — list index out of range
+[1, 2, 3][10]               # IndexError
+
+# AttributeError — object doesn't have that attribute
+"hello".nonexistent()       # AttributeError
+
+# FileNotFoundError — file doesn't exist
+open("nope.txt")            # FileNotFoundError
+
+# ZeroDivisionError
+10 / 0                      # ZeroDivisionError
+
+# ImportError / ModuleNotFoundError
+import nonexistent_module   # ModuleNotFoundError</code></pre>
+    </div>
+  </section>
+
+  <!-- ── CUSTOM EXCEPTIONS ── -->
+  <section>
+    <h2>3. Custom Exception Classes</h2>
+
+    <p>Just like in Java, you create custom exceptions by subclassing <code>Exception</code>. In Python, it's much less boilerplate.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">public class InsufficientFundsException
+        extends Exception {
+    private final double balance;
+    private final double amount;
+
+    public InsufficientFundsException(
+            double balance, double amount) {
+        super(String.format(
+            "Cannot withdraw %.2f, balance: %.2f",
+            amount, balance));
+        this.balance = balance;
+        this.amount = amount;
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">class InsufficientFundsError(Exception):
+    """Raised when a withdrawal exceeds the balance."""
+    def __init__(self, balance, amount):
+        self.balance = balance
+        self.amount = amount
+        super().__init__(
+            f"Cannot withdraw {amount:.2f}, "
+            f"balance: {balance:.2f}"
+        )</code></pre>
+      </div>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — using custom exceptions</span>
+      <pre><code class="language-python"># Define a hierarchy for your application
+class AppError(Exception):
+    """Base exception for our application."""
+    pass
+
+class ValidationError(AppError):
+    """Raised when input validation fails."""
+    pass
+
+class NotFoundError(AppError):
+    """Raised when a resource is not found."""
+    pass
+
+# Usage
+def get_user(user_id):
+    if not isinstance(user_id, int):
+        raise ValidationError(f"user_id must be int, got {type(user_id)}")
+    user = db.find(user_id)
+    if user is None:
+        raise NotFoundError(f"User {user_id} not found")
+    return user
+
+# Catching the hierarchy
+try:
+    user = get_user(input_id)
+except NotFoundError as e:
+    print(f"404: {e}")
+except AppError as e:
+    # Catches ValidationError and any other AppError subclass
+    print(f"App error: {e}")</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Convention:</strong> Python exceptions end in <code>Error</code> (not <code>Exception</code>), e.g., <code>ValueError</code>, <code>TypeError</code>. Follow this naming when creating your own.
+    </div>
+  </section>
+
+  <!-- ── IMPORTING ── -->
+  <section>
+    <h2>4. Importing Modules</h2>
+
+    <p>Python's import system is simpler than Java's. A module is just a <code>.py</code> file. A package is a directory with an <code>__init__.py</code> file. No <code>classpath</code> to wrestle with.</p>
+
+    <h3>Import styles</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">// Import specific class
+import java.util.ArrayList;
+
+// Import everything (discouraged)
+import java.util.*;
+
+// Static import
+import static java.lang.Math.PI;
+
+// Usage
+ArrayList&lt;String&gt; list = new ArrayList&lt;&gt;();
+double area = PI * r * r;</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># Import the whole module
+import json
+data = json.loads('{"a": 1}')
+
+# Import specific things
+from pathlib import Path
+p = Path("data.txt")
+
+# Import with alias
+import numpy as np
+arr = np.array([1, 2, 3])
+
+# Import multiple things
+from os.path import join, exists
+
+# Import everything (avoid — pollutes namespace)
+from math import *   # don't do this in real code</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Best practice:</strong> Prefer <code>import module</code> or <code>from module import specific_thing</code>. Avoid <code>from module import *</code> — it makes it hard to tell where names come from and can cause name collisions.
+    </div>
+
+    <h3>Standard library modules you'll use often</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import os           # OS interface (env vars, paths)
+import sys          # System-specific (argv, exit, path)
+import json         # JSON encoding/decoding
+import csv          # CSV reading/writing (Day 5)
+import re           # Regular expressions (Day 5)
+import datetime     # Dates and times
+import pathlib      # Modern file paths (Day 17)
+import collections  # Counter, defaultdict, etc. (Day 15)
+import functools    # reduce, partial, wraps (Day 16)
+import itertools    # chain, cycle, combinations (Day 16)
+import math         # sqrt, pi, ceil, floor
+import random       # random numbers
+import hashlib      # SHA, MD5 hashing
+import logging      # Structured logging</code></pre>
+    </div>
+  </section>
+
+  <!-- ── YOUR OWN MODULE ── -->
+  <section>
+    <h2>5. Creating Your Own Module</h2>
+
+    <p>Any <code>.py</code> file is a module. You can import functions, classes, and variables from it. No boilerplate — just write the code and import it.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — mathutils.py</span>
+      <pre><code class="language-python"># mathutils.py — this is a module
+
+PI = 3.14159
+
+def circle_area(radius):
+    """Calculate the area of a circle."""
+    return PI * radius ** 2
+
+def circle_circumference(radius):
+    """Calculate the circumference of a circle."""
+    return 2 * PI * radius</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — main.py (using the module)</span>
+      <pre><code class="language-python"># main.py — import from your module
+import mathutils
+
+area = mathutils.circle_area(5)
+print(f"Area: {area:.2f}")
+
+# Or import specific things
+from mathutils import circle_area, PI
+print(f"PI is {PI}")
+print(f"Area: {circle_area(10):.2f}")</code></pre>
+    </div>
+
+    <h3>The __name__ == '__main__' pattern</h3>
+
+    <p>In Java, the entry point is <code>public static void main(String[] args)</code>. Python doesn't require a special method — it runs files top to bottom. But you need a way to distinguish "running this file directly" from "importing this file as a module."</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — mathutils.py with entry point guard</span>
+      <pre><code class="language-python"># mathutils.py
+
+PI = 3.14159
+
+def circle_area(radius):
+    return PI * radius ** 2
+
+def circle_circumference(radius):
+    return 2 * PI * radius
+
+# This block only runs when executing this file directly
+# NOT when importing it as a module
+if __name__ == "__main__":
+    # Test code, demos, or CLI entry point
+    print(f"Area of r=5: {circle_area(5):.2f}")
+    print(f"Circumference of r=5: {circle_circumference(5):.2f}")</code></pre>
+    </div>
+
+    <div class="callout callout-teal">
+      <strong>How it works:</strong> When Python runs a file directly, it sets <code>__name__</code> to <code>"__main__"</code>. When the file is imported, <code>__name__</code> is set to the module name (e.g., <code>"mathutils"</code>). This check prevents test/demo code from running on import.
+    </div>
+  </section>
+
+  <!-- ── PACKAGES ── -->
+  <section>
+    <h2>6. Packages and Project Structure</h2>
+
+    <p>A package is a directory containing an <code>__init__.py</code> file (which can be empty). It lets you organize modules into a hierarchy, like Java packages.</p>
+
+    <div class="shell-block">
+      <span class="block-label">File structure</span>
+      <pre><code>myproject/
+├── main.py
+└── utils/
+    ├── __init__.py      ← makes utils/ a package
+    ├── math_helpers.py
+    └── string_helpers.py</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — importing from packages</span>
+      <pre><code class="language-python"># From main.py
+from utils.math_helpers import circle_area
+from utils.string_helpers import clean_input
+
+# Or import the submodule
+import utils.math_helpers as math_utils
+math_utils.circle_area(5)
+
+# __init__.py can re-export for convenience
+# utils/__init__.py:
+from .math_helpers import circle_area
+from .string_helpers import clean_input
+
+# Then from main.py you can do:
+from utils import circle_area, clean_input</code></pre>
+    </div>
+  </section>
+
+  <!-- ── QUICK REFERENCE ── -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">try / except</div>
+        <code>try:</code> — code that might fail<br>
+        <code>except ValueError as e:</code> — handle error<br>
+        <code>except (A, B):</code> — multiple types
+        <p>Never use bare <code>except:</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">else / finally</div>
+        <code>else:</code> — runs if no exception<br>
+        <code>finally:</code> — always runs (cleanup)
+        <p>else keeps try block narrow</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Raising exceptions</div>
+        <code>raise ValueError("msg")</code><br>
+        <code>raise</code> — re-raise current<br>
+        <code>raise X from e</code> — chain exceptions
+        <p>Like Java's <code>throw</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Custom exceptions</div>
+        <code>class MyError(Exception):</code><br>
+        <code>&nbsp;&nbsp;&nbsp;&nbsp;pass</code>
+        <p>Name ends in Error, not Exception</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Import styles</div>
+        <code>import json</code><br>
+        <code>from pathlib import Path</code><br>
+        <code>import numpy as np</code><br>
+        <code>from os.path import join, exists</code>
+        <p>Avoid <code>from x import *</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Module = .py file</div>
+        <code>import mymodule</code><br>
+        <code>from mymodule import func</code>
+        <p>Any .py file is automatically a module</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">__name__ guard</div>
+        <code>if __name__ == "__main__":</code><br>
+        <code>&nbsp;&nbsp;&nbsp;&nbsp;main()</code>
+        <p>Like Java's main method — entry point guard</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Package = directory</div>
+        <code>mypackage/__init__.py</code><br>
+        <code>from mypackage.module import func</code>
+        <p>__init__.py can re-export for convenience</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Common exceptions</div>
+        <code>ValueError</code>, <code>TypeError</code>, <code>KeyError</code><br>
+        <code>IndexError</code>, <code>FileNotFoundError</code><br>
+        <code>AttributeError</code>, <code>ImportError</code>
+        <p>Learn the common ones — they replace many Java exceptions</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── WRAP-UP ── -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>try/except</code> is Python's try/catch. The <code>else</code> block (runs only if no exception) is a Python-unique feature that keeps your try blocks narrow and intention-revealing.</li>
+      <li>Always catch specific exceptions. Never use bare <code>except:</code> — it swallows <code>KeyboardInterrupt</code> and <code>SystemExit</code>.</li>
+      <li>Use <code>raise</code> to throw exceptions, <code>raise ... from e</code> to chain them. Custom exceptions should subclass <code>Exception</code> and end in <code>Error</code>.</li>
+      <li>Any <code>.py</code> file is a module. Use <code>import</code> or <code>from x import y</code>. Avoid <code>from x import *</code> in real code.</li>
+      <li>The <code>if __name__ == "__main__":</code> guard is Python's entry point pattern. It prevents demo/test code from running when the file is imported as a module.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 7</h4>
+      <ul>
+        <li>Write a function that reads a file with <code>try/except/else/finally</code> — handle <code>FileNotFoundError</code> and <code>PermissionError</code></li>
+        <li>Create a custom <code>ValidationError</code> exception and use it in an input validation function</li>
+        <li>Build a small module (<code>utils.py</code>) with 3-4 helper functions, then import and use them from <code>main.py</code></li>
+        <li>Add the <code>__name__ == '__main__'</code> guard to your module with test code inside it</li>
+        <li>Practice <code>raise ... from e</code> — catch one exception and re-raise a more descriptive one</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 7: Mini Project: CLI Task Manager</strong><br>
+      Time to build something real. You'll create a command-line task manager that adds, lists, completes, and deletes tasks — persisted to a JSON file. This project ties together everything from Days 1–6: functions, data structures, file I/O, error handling, and modules.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day5.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day7.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 6;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

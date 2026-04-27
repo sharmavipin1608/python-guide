@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 42 — Project: Mini RAG Chatbot | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+    /* Project day */
+    .day-badge { background: #ff6b35; color: #fff; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 42 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 42 — Project</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>Project: Mini RAG Chatbot</h1>
+  <p>Upload documents, ask questions, get answers with source references. This project wires together everything from Phase 3: FastAPI, LangChain, ChromaDB, the OpenAI SDK, async, and structured logging.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Project Spec</h2>
+    <div class="spec-box">
+      <h3>What You're Building</h3>
+      <ul>
+        <li><strong>What:</strong> A FastAPI service for document Q&A. Upload text or PDF files → they're chunked and indexed in ChromaDB → ask questions → get answers with source references.</li>
+        <li><strong>Endpoints:</strong> POST /documents (upload + index), GET /documents (list indexed docs), POST /chat (ask a question), DELETE /documents/{id} (remove from index)</li>
+        <li><strong>Storage:</strong> ChromaDB (persistent, on disk) for vectors; in-memory dict for document metadata</li>
+        <li><strong>LLM:</strong> OpenAI gpt-4o-mini (or swap for ChatOllama for local use)</li>
+        <li><strong>Covers:</strong> FastAPI (29–30), ChromaDB (38), OpenAI SDK (39), LangChain (36), async, structlog (41)</li>
+      </ul>
+    </div>
+    <div class="stretch-box">
+      <strong>Stretch Goal:</strong> Add conversation memory so follow-up questions work. Store <code>session_id → message_history</code> in memory and pass the last N messages as context on each question. Also: add a streaming endpoint (POST /chat/stream) that returns tokens via SSE.
+    </div>
+  </section>
+
+  <section>
+    <h2>Project Structure</h2>
+    <div class="python-block">
+      <span class="block-label">file layout</span>
+      <pre><code class="language-text">rag_chatbot/
+  .env                    # OPENAI_API_KEY, CHROMA_PATH, etc.
+  requirements.txt
+  main.py                 # FastAPI app
+  config.py               # BaseSettings
+  indexer.py              # document chunking + ChromaDB ingestion
+  retriever.py            # semantic search wrapper
+  chatbot.py              # RAG chain — retrieve + generate
+  models.py               # Pydantic request/response schemas
+  chroma_db/              # persisted ChromaDB data (gitignored)</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install fastapi uvicorn chromadb openai langchain langchain-openai langchain-text-splitters structlog python-multipart pypdf
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 1 — Config + Schemas</h2>
+    <div class="python-block">
+      <span class="block-label">config.py</span>
+      <pre><code class="language-python">from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env")
+
+    openai_api_key: str
+    openai_model: str = "gpt-4o-mini"
+    chroma_path: str = "./chroma_db"
+    chroma_collection: str = "documents"
+    chunk_size: int = 500
+    chunk_overlap: int = 50
+    retrieval_k: int = 4            # how many chunks to retrieve per question
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">models.py</span>
+      <pre><code class="language-python">from pydantic import BaseModel
+
+class DocumentInfo(BaseModel):
+    doc_id: str
+    filename: str
+    chunk_count: int
+
+class QuestionRequest(BaseModel):
+    question: str
+    session_id: str = "default"
+
+class Source(BaseModel):
+    doc_id: str
+    filename: str
+    chunk_preview: str   # first 100 chars of the matching chunk
+
+class AnswerResponse(BaseModel):
+    answer: str
+    sources: list[Source]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 2 — Indexer</h2>
+    <div class="python-block">
+      <span class="block-label">indexer.py</span>
+      <pre><code class="language-python">import uuid
+import structlog
+import chromadb
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from config import get_settings
+
+log = structlog.get_logger(__name__)
+settings = get_settings()
+
+def get_collection() -> chromadb.Collection:
+    client = chromadb.PersistentClient(path=settings.chroma_path)
+    embedding_fn = OpenAIEmbeddingFunction(
+        api_key=settings.openai_api_key,
+        model_name="text-embedding-3-small",
+    )
+    return client.get_or_create_collection(
+        name=settings.chroma_collection,
+        embedding_function=embedding_fn,
+    )
+
+def index_document(filename: str, content: str) -> tuple[str, int]:
+    """Chunk and index a document. Returns (doc_id, chunk_count)."""
+    doc_id = str(uuid.uuid4())
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+    )
+    chunks = splitter.split_text(content)
+    if not chunks:
+        raise ValueError("Document produced no chunks after splitting")
+
+    collection = get_collection()
+    collection.add(
+        documents=chunks,
+        ids=[f"{doc_id}-chunk-{i}" for i in range(len(chunks))],
+        metadatas=[{"doc_id": doc_id, "filename": filename, "chunk_index": i}
+                   for i in range(len(chunks))],
+    )
+    log.info("document_indexed", doc_id=doc_id, filename=filename, chunks=len(chunks))
+    return doc_id, len(chunks)
+
+def delete_document(doc_id: str) -> int:
+    """Delete all chunks belonging to a document. Returns chunks deleted."""
+    collection = get_collection()
+    results = collection.get(where={"doc_id": doc_id})
+    ids = results["ids"]
+    if ids:
+        collection.delete(ids=ids)
+    log.info("document_deleted", doc_id=doc_id, chunks_removed=len(ids))
+    return len(ids)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 3 — Retriever + RAG Chain</h2>
+    <div class="python-block">
+      <span class="block-label">retriever.py</span>
+      <pre><code class="language-python">from indexer import get_collection
+from models import Source
+from config import get_settings
+
+settings = get_settings()
+
+def retrieve(question: str) -> tuple[str, list[Source]]:
+    """Find the most relevant chunks for a question."""
+    collection = get_collection()
+    results = collection.query(
+        query_texts=[question],
+        n_results=settings.retrieval_k,
+    )
+    docs = results["documents"][0]
+    metas = results["metadatas"][0]
+
+    context = "\n\n".join(
+        f"[Source {i+1} — {m['filename']}]:\n{doc}"
+        for i, (doc, m) in enumerate(zip(docs, metas))
+    )
+    sources = [
+        Source(
+            doc_id=m["doc_id"],
+            filename=m["filename"],
+            chunk_preview=doc[:100],
+        )
+        for doc, m in zip(docs, metas)
+    ]
+    return context, sources</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">chatbot.py</span>
+      <pre><code class="language-python">import structlog
+from openai import AsyncOpenAI
+from retriever import retrieve
+from models import AnswerResponse
+from config import get_settings
+
+log = structlog.get_logger(__name__)
+settings = get_settings()
+
+SYSTEM_PROMPT = """You are a helpful assistant that answers questions based on provided documents.
+Answer using ONLY the information in the context below.
+If the context doesn't contain the answer, say: "I don't have enough information to answer that."
+Always be concise and cite which source you're drawing from.
+
+Context:
+{context}"""
+
+async def answer_question(question: str) -> AnswerResponse:
+    log.info("question_received", question=question[:100])
+
+    # Retrieve relevant chunks
+    context, sources = retrieve(question)
+
+    # Generate answer
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    response = await client.chat.completions.create(
+        model=settings.openai_model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT.format(context=context)},
+            {"role": "user", "content": question},
+        ],
+        temperature=0,
+        max_tokens=600,
+    )
+    answer = response.choices[0].message.content
+    log.info("answer_generated", sources=len(sources), tokens=response.usage.total_tokens)
+
+    return AnswerResponse(answer=answer, sources=sources)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 4 — FastAPI App</h2>
+    <div class="python-block">
+      <span class="block-label">main.py</span>
+      <pre><code class="language-python">import sys
+import structlog
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from models import DocumentInfo, QuestionRequest, AnswerResponse
+from indexer import index_document, delete_document
+from chatbot import answer_question
+
+# Logging setup
+structlog.configure(
+    processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.dev.ConsoleRenderer(),   # switch to JSONRenderer() in prod
+    ],
+    logger_factory=structlog.stdlib.LoggerFactory(),
+)
+
+log = structlog.get_logger(__name__)
+
+# In-memory document registry (use a DB for production)
+doc_registry: dict[str, DocumentInfo] = {}
+
+app = FastAPI(title="RAG Chatbot", version="1.0")
+
+@app.post("/documents", response_model=DocumentInfo, status_code=201)
+async def upload_document(file: UploadFile = File(...)):
+    """Upload and index a document (plain text or PDF)."""
+    if file.content_type not in ("text/plain", "application/pdf"):
+        raise HTTPException(status_code=400, detail="Only .txt and .pdf files are supported")
+
+    content_bytes = await file.read()
+    if file.content_type == "application/pdf":
+        from pypdf import PdfReader
+        import io
+        reader = PdfReader(io.BytesIO(content_bytes))
+        content = "\n".join(page.extract_text() or "" for page in reader.pages)
+    else:
+        content = content_bytes.decode("utf-8", errors="ignore")
+
+    if not content.strip():
+        raise HTTPException(status_code=422, detail="Document appears to be empty")
+
+    doc_id, chunk_count = index_document(file.filename, content)
+    info = DocumentInfo(doc_id=doc_id, filename=file.filename, chunk_count=chunk_count)
+    doc_registry[doc_id] = info
+    return info
+
+@app.get("/documents", response_model=list[DocumentInfo])
+def list_documents():
+    return list(doc_registry.values())
+
+@app.delete("/documents/{doc_id}", status_code=204)
+def remove_document(doc_id: str):
+    if doc_id not in doc_registry:
+        raise HTTPException(status_code=404, detail="Document not found")
+    delete_document(doc_id)
+    del doc_registry[doc_id]
+
+@app.post("/chat", response_model=AnswerResponse)
+async def chat(request: QuestionRequest):
+    """Ask a question about the indexed documents."""
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    structlog.contextvars.bind_contextvars(session_id=request.session_id)
+    return await answer_question(request.question)
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "documents_indexed": len(doc_registry)}</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>uvicorn main:app --reload<br>
+      <span class="prompt">$ </span># Upload a document<br>
+      <span class="prompt">$ </span>curl -X POST http://localhost:8000/documents -F "file=@my_doc.txt"<br>
+      <span class="prompt">$ </span># Ask a question<br>
+      <span class="prompt">$ </span>curl -X POST http://localhost:8000/chat \<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;-H "Content-Type: application/json" \<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;-d '{"question": "What does this document say about X?"}'
+    </div>
+  </section>
+
+  <section>
+    <h2>Stretch: Conversation Memory</h2>
+    <div class="python-block">
+      <span class="block-label">chatbot.py — with session memory</span>
+      <pre><code class="language-python">from collections import defaultdict
+from openai.types.chat import ChatCompletionMessageParam
+
+# Session store: session_id → list of messages
+_sessions: dict[str, list[ChatCompletionMessageParam]] = defaultdict(list)
+
+async def answer_with_memory(question: str, session_id: str) -> AnswerResponse:
+    context, sources = retrieve(question)
+    history = _sessions[session_id]
+
+    messages: list[ChatCompletionMessageParam] = [
+        {"role": "system", "content": SYSTEM_PROMPT.format(context=context)},
+        *history[-6:],                      # last 3 turns (6 messages)
+        {"role": "user", "content": question},
+    ]
+
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    response = await client.chat.completions.create(
+        model=settings.openai_model,
+        messages=messages,
+        temperature=0,
+    )
+    answer = response.choices[0].message.content
+
+    # Update history
+    _sessions[session_id].append({"role": "user", "content": question})
+    _sessions[session_id].append({"role": "assistant", "content": answer})
+
+    return AnswerResponse(answer=answer, sources=sources)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">File upload</div>
+        <code>file: UploadFile = File(...)</code>
+        <p>FastAPI handles multipart; read bytes with await file.read()</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">PDF extraction</div>
+        <code>PdfReader(BytesIO(bytes)).pages[i].extract_text()</code>
+        <p>pypdf library; extract_text() can return None on image PDFs</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">ChromaDB metadata filter</div>
+        <code>collection.get(where={"doc_id": id})</code>
+        <p>Use to find all chunks for a document before deleting</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">RAG pattern</div>
+        <code>retrieve(question) → inject as context → generate</code>
+        <p>Three explicit steps; keep them separate for debuggability</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Session memory</div>
+        <code>history[-6:]  # last 3 turns</code>
+        <p>Limit history to avoid growing context window indefinitely</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Structured log on each request</div>
+        <code>structlog.contextvars.bind_contextvars(session_id=...)</code>
+        <p>All logs in that request will include session_id automatically</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Separating indexer, retriever, and chatbot into distinct modules makes the system testable — you can unit-test retrieval quality without an LLM, and test the LLM prompt without ChromaDB.</li>
+      <li>Metadata on ChromaDB documents (<code>doc_id</code>, <code>filename</code>) is what makes deletion and source attribution possible. Always store enough metadata to answer "which document did this come from?"</li>
+      <li>The system prompt boundary — "answer ONLY using the context" — is critical for preventing hallucination. Without it, the LLM will make things up when it doesn't find the answer in the retrieved chunks.</li>
+      <li>Session memory is a sliding window, not an unlimited history. Six messages (3 turns) is a practical limit that keeps context costs controlled while preserving conversational coherence.</li>
+      <li>This is the full RAG architecture used in production AI products — vector store, retrieval, augmented prompt, generation. The main difference at scale is using a managed vector DB (Pinecone, Weaviate) and a dedicated embedding pipeline.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice + Stretch Goals</h4>
+      <ul>
+        <li>Upload 3-4 of your own documents and test question quality</li>
+        <li>Experiment with <code>retrieval_k</code>: compare k=2 vs k=6 answer quality</li>
+        <li>Stretch: implement the streaming endpoint using <code>AsyncOpenAI</code> + <code>StreamingResponse</code></li>
+        <li>Stretch: add session memory and test that follow-up questions work correctly</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 43 — Advanced OOP: ABCs + Protocols:</strong> Phase 3 complete. Next up: Phase 4 — Advanced Python. We start with the type system's power tools: abstract base classes for enforced contracts, and Protocols for structural typing (duck typing with type safety).
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day41.html" class="nav-btn">← Day 41: Logging</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day43.html" class="nav-btn">Day 43: ABCs + Protocols →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-42-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-42-done') === 'true';
+    localStorage.setItem('day-42-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

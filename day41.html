@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 41 — Logging + Observability | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 41 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 41</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>Logging + Observability</h1>
+  <p>Print statements don't scale. Today: Python's logging module, structured JSON logs with structlog, correlation IDs across requests, and FastAPI middleware for request tracing — the same observability patterns you use in Spring Boot with SLF4J + MDC.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>Python logging module — levels, handlers, formatters <span style="color:#555">~15 min</span></li>
+        <li>structlog — structured JSON logging <span style="color:#555">~20 min</span></li>
+        <li>Correlation IDs across requests <span style="color:#555">~15 min</span></li>
+        <li>FastAPI request logging middleware <span style="color:#555">~15 min</span></li>
+        <li>Integrating with external systems (Datadog / OpenTelemetry overview) <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>logging.getLogger(__name__)</strong> → <code>LoggerFactory.getLogger(MyClass.class)</code></li>
+        <li><strong>logging.basicConfig(level=INFO)</strong> → logback.xml / application.properties log config</li>
+        <li><strong>structlog</strong> → SLF4J + Logback with JSON encoder (logstash-logback-encoder)</li>
+        <li><strong>contextvars.ContextVar</strong> → MDC (Mapped Diagnostic Context) in SLF4J</li>
+        <li><strong>FastAPI middleware logging</strong> → Spring's <code>CommonsRequestLoggingFilter</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. Python's logging Module</h2>
+    <p>Python has a built-in <code>logging</code> module. It mirrors the SLF4J / Log4j hierarchy — loggers, handlers, formatters, and log levels.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — SLF4J</span>
+        <pre><code class="language-java">import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+public class UserService {
+    private static final Logger log =
+        LoggerFactory.getLogger(UserService.class);
+
+    public void createUser(String name) {
+        log.info("Creating user: {}", name);
+        log.debug("Debug details: {}", name);
+        log.error("Something failed", exception);
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — logging</span>
+        <pre><code class="language-python">import logging
+
+# Named logger — use __name__ for module hierarchy
+log = logging.getLogger(__name__)
+
+def create_user(name: str):
+    log.info("Creating user: %s", name)    # % formatting, not f-string
+    log.debug("Debug details: %s", name)
+    try:
+        ...
+    except Exception:
+        log.exception("Something failed")  # logs traceback automatically</code></pre>
+      </div>
+    </div>
+
+    <h3>Configuration</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import logging
+import sys
+
+def setup_logging(level: str = "INFO") -> None:
+    logging.basicConfig(
+        level=getattr(logging, level.upper()),
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+        stream=sys.stdout,          # log to stdout (Docker-friendly)
+    )
+    # Silence noisy third-party loggers
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
+
+setup_logging("DEBUG")
+
+log = logging.getLogger(__name__)
+log.info("App started")
+log.warning("Low disk space")
+log.error("DB connection failed")</code></pre>
+    </div>
+
+    <h3>Log Levels</h3>
+    <div class="decision-table">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr><th>Level</th><th>Value</th><th>When to use</th><th>Java equivalent</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>DEBUG</code></td><td>10</td><td>Detailed diagnostic info, dev only</td><td>DEBUG</td></tr>
+          <tr><td><code>INFO</code></td><td>20</td><td>Normal operation events</td><td>INFO</td></tr>
+          <tr><td><code>WARNING</code></td><td>30</td><td>Unexpected but recoverable</td><td>WARN</td></tr>
+          <tr><td><code>ERROR</code></td><td>40</td><td>Operation failed, needs attention</td><td>ERROR</td></tr>
+          <tr><td><code>CRITICAL</code></td><td>50</td><td>System-level failure</td><td>FATAL</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Structured Logging with structlog</h2>
+    <p>Plain text logs are hard to query. Structured logs are JSON — every field is queryable in Datadog, CloudWatch, or Elasticsearch. structlog is the Python standard for this, similar to using logstash-logback-encoder in Java.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install structlog
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — structlog setup</span>
+      <pre><code class="language-python">import logging
+import structlog
+
+def configure_logging(json_logs: bool = True) -> None:
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,     # merge request-scoped context
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+    ]
+
+    if json_logs:
+        # Production: emit JSON
+        processors = shared_processors + [structlog.processors.JSONRenderer()]
+    else:
+        # Development: pretty colored output
+        processors = shared_processors + [structlog.dev.ConsoleRenderer()]
+
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.stdlib.BoundLogger,
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+    logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+
+configure_logging(json_logs=False)   # pretty in dev, True in prod
+
+log = structlog.get_logger(__name__)
+
+# Key-value pairs are first-class — not buried in a string
+log.info("user_created", user_id=42, email="vipin@example.com")
+log.warning("rate_limit_approached", requests_per_min=95, limit=100)
+log.error("db_query_failed", table="tasks", duration_ms=5430, error="timeout")</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">JSON output (prod)</span>
+      <pre><code class="language-json">{"event": "user_created", "user_id": 42, "email": "vipin@example.com", "level": "info", "timestamp": "2026-04-26T08:00:00Z", "logger": "app.users"}
+{"event": "db_query_failed", "table": "tasks", "duration_ms": 5430, "error": "timeout", "level": "error", "timestamp": "2026-04-26T08:00:01Z"}</code></pre>
+    </div>
+
+    <h3>Bound Loggers — Persistent Context</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">log = structlog.get_logger()
+
+# Bind context that appears on every subsequent log call from this logger
+request_log = log.bind(user_id=42, endpoint="/tasks")
+request_log.info("request_started")
+request_log.info("db_queried", rows=15)
+request_log.info("request_completed", duration_ms=42)
+# All three lines include user_id=42 and endpoint="/tasks"</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Correlation IDs with contextvars</h2>
+    <p>A correlation ID (also called trace ID or request ID) ties together all log lines from a single request — across middleware, service calls, and Celery tasks. In Java this is MDC; in Python it's <code>contextvars</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — MDC</span>
+        <pre><code class="language-java">// In filter:
+MDC.put("correlationId", requestId);
+
+// In any service method:
+log.info("Processing task");
+// → {"correlationId":"abc123","message":"Processing task"}
+
+// Cleanup:
+MDC.clear();</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — contextvars</span>
+        <pre><code class="language-python">from contextvars import ContextVar
+import structlog
+
+# Module-level context variable
+_request_id: ContextVar[str] = ContextVar("request_id", default="")
+
+def set_request_id(request_id: str) -> None:
+    _request_id.set(request_id)
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+
+def get_request_id() -> str:
+    return _request_id.get()</code></pre>
+      </div>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Why contextvars?</strong> Unlike a global variable, a <code>ContextVar</code> is isolated per asyncio task (and per thread). Setting it in one request doesn't bleed into another — exactly like MDC in Java's thread-local model.
+    </div>
+  </section>
+
+  <section>
+    <h2>4. FastAPI Request Logging Middleware</h2>
+    <p>A middleware layer logs every request — method, path, status code, duration — and injects the correlation ID so all logs from that request are grouped.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — middleware</span>
+      <pre><code class="language-python">import time
+import uuid
+import structlog
+from fastapi import FastAPI, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from contextvars import ContextVar
+
+log = structlog.get_logger()
+_request_id: ContextVar[str] = ContextVar("request_id", default="")
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        # Generate or read correlation ID
+        request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        _request_id.set(request_id)
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(
+            request_id=request_id,
+            method=request.method,
+            path=request.url.path,
+        )
+
+        start = time.perf_counter()
+        log.info("request_started")
+
+        try:
+            response = await call_next(request)
+        except Exception:
+            log.exception("request_failed")
+            raise
+        finally:
+            duration_ms = round((time.perf_counter() - start) * 1000, 2)
+            log.info(
+                "request_completed",
+                status_code=response.status_code,
+                duration_ms=duration_ms,
+            )
+
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+app = FastAPI()
+app.add_middleware(RequestLoggingMiddleware)</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">JSON log output for one request</span>
+      <pre><code class="language-json">{"event":"request_started","request_id":"abc-123","method":"POST","path":"/tasks","level":"info","timestamp":"2026-04-26T08:00:00Z"}
+{"event":"db_queried","request_id":"abc-123","rows":1,"duration_ms":4.2,"level":"info","timestamp":"2026-04-26T08:00:00Z"}
+{"event":"request_completed","request_id":"abc-123","status_code":201,"duration_ms":18.5,"level":"info","timestamp":"2026-04-26T08:00:00Z"}</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. OpenTelemetry Overview</h2>
+    <p>OpenTelemetry (OTel) is the vendor-neutral standard for traces, metrics, and logs. It's the modern replacement for vendor-specific agents (Datadog APM, New Relic, etc.). Python has a full OTel SDK.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — OpenTelemetry quickstart</span>
+      <pre><code class="language-python"># pip install opentelemetry-sdk opentelemetry-instrumentation-fastapi
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
+# Setup tracer (swap ConsoleSpanExporter for OTLP exporter in prod)
+provider = TracerProvider()
+provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+trace.set_tracer_provider(provider)
+
+# Auto-instrument FastAPI — adds spans for every request automatically
+app = FastAPI()
+FastAPIInstrumentor.instrument_app(app)
+
+# Manual spans for custom operations
+tracer = trace.get_tracer(__name__)
+
+async def process_task(task_id: int):
+    with tracer.start_as_current_span("process_task") as span:
+        span.set_attribute("task.id", task_id)
+        # ... do work ...
+        span.set_attribute("task.status", "done")</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>OTel vs structlog:</strong> Use both. structlog handles application-level structured logs (business events, errors). OTel handles distributed tracing (spans across services) and metrics (request rates, latencies). They complement each other — OTel can automatically inject trace IDs into your structlog context.
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Get logger</div>
+        <code>log = logging.getLogger(__name__)</code>
+        <p>Always use __name__ — creates logger hierarchy like package.module</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Log with exception</div>
+        <code>log.exception("message")</code>
+        <p>Logs ERROR + full traceback; call inside except block</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">structlog logger</div>
+        <code>log = structlog.get_logger()</code>
+        <p>Returns a bound logger; add context with .bind()</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Structured event</div>
+        <code>log.info("event_name", key=value, other=val)</code>
+        <p>event= is the log message; extra kwargs become JSON fields</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Request context</div>
+        <code>structlog.contextvars.bind_contextvars(request_id=rid)</code>
+        <p>Bound to current async context — appears on all subsequent logs</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Clear context</div>
+        <code>structlog.contextvars.clear_contextvars()</code>
+        <p>Call at request start so previous request's context doesn't leak</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Silence library</div>
+        <code>logging.getLogger("httpx").setLevel(logging.WARNING)</code>
+        <p>Raise the level for noisy third-party loggers</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">JSON renderer</div>
+        <code>structlog.processors.JSONRenderer()</code>
+        <p>Use in prod; swap for ConsoleRenderer() in dev</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Never use <code>print()</code> for application logging. Use <code>logging.getLogger(__name__)</code> — you get log levels, filtering, and handler routing for free.</li>
+      <li>Structured logs (JSON) are not optional in production. They're the difference between <code>grep</code>-ing log files and running a SQL query against Datadog.</li>
+      <li><code>structlog.contextvars.bind_contextvars(request_id=...)</code> is the Python equivalent of MDC — set it in middleware and it automatically appears on every log line from that request.</li>
+      <li>Always clear contextvars at the start of a request (<code>clear_contextvars()</code>), not just at the end. Async task reuse can carry context from a previous request if you only clear at the end.</li>
+      <li>Use structlog for application events and OpenTelemetry for distributed traces. They solve different problems and work well together.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 42</h4>
+      <ul>
+        <li>Add structlog to the Day 35 FastAPI app with the request logging middleware</li>
+        <li>Replace all <code>print()</code> calls in previous projects with proper log statements</li>
+        <li>Verify that all log lines for a single request share the same <code>request_id</code></li>
+        <li>Try running in JSON mode and pipe the output to <code>python3 -m json.tool</code></li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 42 — Project: Mini RAG Chatbot:</strong> You now have all the pieces — FastAPI, LangChain, ChromaDB, OpenAI SDK, async, logging. Tomorrow's project wires them together into a document Q&amp;A service where you upload docs and ask questions.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day40.html" class="nav-btn">← Day 40: Celery + Redis</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day42.html" class="nav-btn">Day 42: RAG Chatbot →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-41-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-41-done') === 'true';
+    localStorage.setItem('day-41-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

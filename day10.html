@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 10 — Iterators + Generators | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 10 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 10</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Iterators + Generators</h1>
+  <p>Python's <code>for</code> loop works on anything that implements the iterator protocol. Generators let you produce values lazily — one at a time — without loading everything into memory first.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>What makes something iterable — the <code>__iter__</code> / <code>__next__</code> protocol</li>
+        <li>The difference between an iterable and an iterator</li>
+        <li>Creating a custom iterator class</li>
+        <li>The <code>yield</code> keyword — turning a function into a generator</li>
+        <li>Generator expressions — lazy list comprehensions</li>
+        <li>Why generators are memory-efficient vs building full lists</li>
+        <li>Real-world use: processing large files line by line</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li>Iterable interface + <code>iterator()</code> method → <code>__iter__</code></li>
+        <li>Iterator interface with <code>hasNext()</code> / <code>next()</code> → <code>__next__</code> + <code>StopIteration</code></li>
+        <li><code>yield</code> generator → closest to Java's <code>Stream.generate()</code> or a lazy <code>Spliterator</code></li>
+        <li>Generator expression → <code>Stream.of(...).map(...).filter(...)</code> — lazy pipeline</li>
+        <li>File-by-line generator → <code>Files.lines(path)</code> — lazy stream from file</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- CONTENT: Iterables vs Iterators -->
+  <section>
+    <h2>Iterables vs Iterators</h2>
+
+    <h3>The distinction matters</h3>
+    <p>An <strong>iterable</strong> is anything you can loop over — it has <code>__iter__</code> which returns an iterator. An <strong>iterator</strong> is the object that actually remembers position and produces the next value via <code>__next__</code>. Lists are iterables; <code>iter(list)</code> returns an iterator.</p>
+
+    <div class="diagram-box">
+      <span class="highlight">for x in [1, 2, 3]:</span> ← [1,2,3] is an <span class="teal">Iterable</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;Python calls <span class="highlight">[1,2,3].__iter__()</span> → returns a <span class="teal">list_iterator</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;Python calls <span class="highlight">list_iterator.__next__()</span> → 1<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;Python calls <span class="highlight">list_iterator.__next__()</span> → 2<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;Python calls <span class="highlight">list_iterator.__next__()</span> → 3<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;Python calls <span class="highlight">list_iterator.__next__()</span> → raises <span class="teal">StopIteration</span> → loop ends
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Manually doing what for-loops do automatically
+numbers = [10, 20, 30]
+
+it = iter(numbers)       # calls numbers.__iter__()
+print(next(it))          # 10 — calls it.__next__()
+print(next(it))          # 20
+print(next(it))          # 30
+# next(it)               # would raise StopIteration
+
+# Most objects are iterables but NOT iterators themselves
+# A list can be iterated many times:
+for x in numbers: print(x)  # works
+for x in numbers: print(x)  # works again
+
+# An iterator is exhausted after one pass:
+it2 = iter(numbers)
+for x in it2: print(x)  # works
+for x in it2: print(x)  # prints nothing — exhausted</code></pre>
+    </div>
+
+    <h3>Checking iterability</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from collections.abc import Iterable, Iterator
+
+print(isinstance([1, 2], Iterable))     # True
+print(isinstance([1, 2], Iterator))     # False — list is not an iterator
+print(isinstance(iter([1, 2]), Iterator)) # True — list_iterator IS an iterator
+
+# Generators are both Iterable AND Iterator
+def gen():
+    yield 1
+
+g = gen()
+print(isinstance(g, Iterable))  # True
+print(isinstance(g, Iterator))  # True</code></pre>
+    </div>
+  </section>
+
+  <!-- CONTENT: Custom iterator class -->
+  <section>
+    <h2>Custom Iterator Class</h2>
+
+    <h3>Implementing the protocol manually</h3>
+    <p>To make a class iterable, implement <code>__iter__</code> (returns <code>self</code> if the class is its own iterator) and <code>__next__</code> (returns the next value or raises <code>StopIteration</code>). This is exactly the Java <code>Iterator</code> interface, just with <code>StopIteration</code> instead of <code>hasNext()</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">class CountUp implements Iterable&lt;Integer&gt;, Iterator&lt;Integer&gt; {
+    private final int limit;
+    private int current;
+
+    CountUp(int start, int limit) {
+        this.current = start;
+        this.limit = limit;
+    }
+
+    @Override public Iterator&lt;Integer&gt; iterator() { return this; }
+    @Override public boolean hasNext() { return current &lt;= limit; }
+    @Override public Integer next() {
+        if (!hasNext()) throw new NoSuchElementException();
+        return current++;
+    }
+}
+
+for (int n : new CountUp(1, 5)) {
+    System.out.println(n);  // 1 2 3 4 5
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">class CountUp:
+    """Iterates from start to limit (inclusive)."""
+
+    def __init__(self, start: int, limit: int):
+        self.current = start
+        self.limit = limit
+
+    def __iter__(self):
+        # Return the iterator object — self in this case
+        return self
+
+    def __next__(self) -> int:
+        # Return next value or raise StopIteration
+        if self.current > self.limit:
+            raise StopIteration
+        value = self.current
+        self.current += 1
+        return value
+
+
+for n in CountUp(1, 5):
+    print(n)   # 1 2 3 4 5
+
+# Works with all iteration tools
+print(list(CountUp(1, 5)))    # [1, 2, 3, 4, 5]
+print(sum(CountUp(1, 100)))   # 5050
+print(max(CountUp(1, 10)))    # 10</code></pre>
+      </div>
+    </div>
+
+    <h3>Separating iterable from iterator</h3>
+    <p>Better practice for collections: make the collection an iterable that produces a fresh iterator each time. This way the collection can be iterated multiple times.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class NumberRange:
+    """Iterable — can be iterated multiple times."""
+
+    def __init__(self, start: int, stop: int):
+        self.start = start
+        self.stop = stop
+
+    def __iter__(self):
+        # Return a fresh iterator each time
+        return NumberRangeIterator(self.start, self.stop)
+
+
+class NumberRangeIterator:
+    """Iterator — stateful, exhausted after one pass."""
+
+    def __init__(self, start: int, stop: int):
+        self.current = start
+        self.stop = stop
+
+    def __iter__(self):
+        return self   # an iterator must also be iterable
+
+    def __next__(self) -> int:
+        if self.current >= self.stop:
+            raise StopIteration
+        value = self.current
+        self.current += 1
+        return value
+
+
+r = NumberRange(0, 3)
+for x in r: print(x)   # 0 1 2
+for x in r: print(x)   # 0 1 2 again — fresh iterator!</code></pre>
+    </div>
+  </section>
+
+  <!-- CONTENT: Generators -->
+  <section>
+    <h2>Generators with yield</h2>
+
+    <h3>From iterator class to generator function</h3>
+    <p>The iterator class pattern works but is verbose. The <code>yield</code> keyword replaces it entirely. A function with <code>yield</code> becomes a generator function — calling it returns a generator object that implements <code>__iter__</code> and <code>__next__</code> automatically. Python suspends the function at each <code>yield</code> and resumes from there on the next <code>next()</code> call.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java (Stream equivalent)</span>
+        <pre><code class="language-java">// Java needs a Stream factory or explicit Iterator
+IntStream.rangeClosed(1, limit)
+    .filter(n -> n % 2 == 0)
+    .forEach(System.out::println);
+
+// No direct "yield" — must build collection or use Stream</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">def count_up(start: int, limit: int):
+    """Generator function — note the yield keyword."""
+    current = start
+    while current <= limit:
+        yield current      # suspend here, hand value to caller
+        current += 1       # resume here on next next()
+
+
+# Calling count_up() does NOT execute the body yet
+gen = count_up(1, 5)
+print(type(gen))   # &lt;class 'generator'&gt;
+
+# Values are produced one at a time, on demand
+print(next(gen))   # 1
+print(next(gen))   # 2
+
+# Use in a for loop — most common
+for n in count_up(1, 5):
+    print(n)   # 1 2 3 4 5
+
+
+def even_numbers(limit: int):
+    """Generator that only yields even numbers."""
+    for n in range(limit):
+        if n % 2 == 0:
+            yield n
+
+
+print(list(even_numbers(10)))  # [0, 2, 4, 6, 8]</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Key insight:</strong> When Python sees <code>yield</code> in a function body, it transforms the entire function into a generator factory. The body doesn't run until you call <code>next()</code> on the returned generator object.
+    </div>
+
+    <h3>Infinite generators</h3>
+    <p>Because generators are lazy, they can produce infinite sequences without infinite memory. Pull values only as needed.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">def fibonacci():
+    """Infinite Fibonacci sequence — no memory limit."""
+    a, b = 0, 1
+    while True:       # infinite loop is fine — we yield one at a time
+        yield a
+        a, b = b, a + b
+
+
+def take(n: int, gen):
+    """Take first n items from any generator."""
+    for _ in range(n):
+        yield next(gen)
+
+
+fib = fibonacci()
+print(list(take(10, fib)))
+# [0, 1, 1, 2, 3, 5, 8, 13, 21, 34]
+
+# Or use itertools.islice for the same effect
+import itertools
+print(list(itertools.islice(fibonacci(), 10)))</code></pre>
+    </div>
+
+    <h3>yield from — delegating to sub-generators</h3>
+    <p><code>yield from</code> forwards all values from another iterable, flattening one level of nesting.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">def chain(*iterables):
+    """Yield all items from each iterable in sequence."""
+    for it in iterables:
+        yield from it   # delegates to each iterable
+
+
+print(list(chain([1, 2], [3, 4], [5])))
+# [1, 2, 3, 4, 5]
+
+
+def flatten(nested):
+    """Recursively flatten a nested list."""
+    for item in nested:
+        if isinstance(item, list):
+            yield from flatten(item)
+        else:
+            yield item
+
+
+data = [1, [2, [3, 4], 5], [6, 7]]
+print(list(flatten(data)))  # [1, 2, 3, 4, 5, 6, 7]</code></pre>
+    </div>
+  </section>
+
+  <!-- CONTENT: Generator expressions -->
+  <section>
+    <h2>Generator Expressions</h2>
+
+    <h3>Lazy list comprehensions</h3>
+    <p>A generator expression is like a list comprehension but with parentheses instead of brackets. It produces values lazily — nothing is computed until you iterate. Use them to build memory-efficient pipelines.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># List comprehension — computes ALL values immediately, stores in memory
+squares_list = [x**2 for x in range(1_000_000)]   # ~8MB in memory
+
+# Generator expression — computes ONE value at a time, tiny memory
+squares_gen = (x**2 for x in range(1_000_000))    # ~200 bytes
+
+import sys
+print(sys.getsizeof(squares_list))  # ~8,697,464 bytes
+print(sys.getsizeof(squares_gen))   # 208 bytes
+
+# Both work the same in iteration:
+print(sum(x**2 for x in range(100)))   # 328350
+
+# Chaining generator expressions — lazy pipeline
+data = range(1_000_000)
+evens = (x for x in data if x % 2 == 0)
+squares = (x**2 for x in evens)
+first_ten = list(itertools.islice(squares, 10))
+print(first_ten)  # [0, 4, 16, 36, 64, 100, 144, 196, 256, 324]
+# None of this touched 1M items — only 10 were actually computed</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>When to use each:</strong>
+      <br>Use a <strong>list comprehension</strong> when you need the full result in memory (multiple passes, index access, <code>len()</code>).
+      <br>Use a <strong>generator expression</strong> when you're producing values for a single pass — summing, filtering, writing to file, etc.
+    </div>
+  </section>
+
+  <!-- CONTENT: Real world -->
+  <section>
+    <h2>Real-World Use: Processing Large Files</h2>
+
+    <h3>Line-by-line file processing</h3>
+    <p>The canonical generator use case: a log file or CSV that's too large to load into memory. Python's file objects are themselves iterators — each line is yielded on demand. Build generator pipelines on top for clean, memory-efficient processing.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pathlib import Path
+from typing import Iterator
+
+
+def read_lines(path: str) -> Iterator[str]:
+    """Yield lines from a file, stripping whitespace."""
+    with open(path) as f:
+        for line in f:          # file object is an iterator — lazy
+            yield line.strip()
+
+
+def filter_errors(lines: Iterator[str]) -> Iterator[str]:
+    """Yield only lines containing 'ERROR'."""
+    for line in lines:
+        if "ERROR" in line:
+            yield line
+
+
+def parse_log_entry(line: str) -> dict:
+    """Parse 'TIMESTAMP LEVEL message' format."""
+    parts = line.split(maxsplit=2)
+    if len(parts) == 3:
+        return {"timestamp": parts[0], "level": parts[1], "msg": parts[2]}
+    return {"raw": line}
+
+
+def process_log(path: str) -> Iterator[dict]:
+    """Full generator pipeline — reads, filters, and parses."""
+    lines = read_lines(path)
+    errors = filter_errors(lines)
+    for line in errors:
+        yield parse_log_entry(line)
+
+
+# This processes a 10GB log file with constant memory!
+# No line is loaded until we ask for it.
+for entry in process_log("app.log"):
+    print(f"[{entry.get('timestamp')}] {entry.get('msg')}")</code></pre>
+    </div>
+
+    <h3>Generator pipeline vs Java Stream</h3>
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">Files.lines(Path.of("app.log"))
+    .filter(line -> line.contains("ERROR"))
+    .map(line -> parseLogEntry(line))
+    .forEach(entry -> System.out.println(entry));</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">lines  = (l.strip() for l in open("app.log"))
+errors = (l for l in lines if "ERROR" in l)
+parsed = (parse_log_entry(l) for l in errors)
+
+for entry in parsed:
+    print(entry)
+
+# Or as one expression:
+for entry in (parse_log_entry(l) for l in open("app.log") if "ERROR" in l):
+    print(entry)</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Memory note:</strong> The file handle in <code>open("app.log")</code> stays open while the generator is alive. For production code, wrap in a generator function that uses <code>with open(...)</code> as shown in the <code>read_lines</code> example above, ensuring the file closes properly when the generator is exhausted or garbage-collected.
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Iterable protocol</div>
+        <code>def __iter__(self): return self</code>
+        <p>Plus <code>__next__</code> that returns next value or raises <code>StopIteration</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Check iterability</div>
+        <code>isinstance(x, Iterable)</code>
+        <p>From <code>collections.abc</code>. Also: try <code>iter(x)</code> — raises <code>TypeError</code> if not iterable.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Generator function</div>
+        <code>def gen(): yield 1; yield 2</code>
+        <p>Any function with <code>yield</code> returns a generator object. Body doesn't run until iterated.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Generator expression</div>
+        <code>(x**2 for x in range(10))</code>
+        <p>Like list comprehension but lazy. Use <code>( )</code> not <code>[ ]</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Consume a generator</div>
+        <code>list(gen()) / sum(gen()) / next(g)</code>
+        <p>Force evaluation with <code>list()</code>, aggregate with <code>sum()</code>/<code>max()</code>, pull one with <code>next()</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">yield from</div>
+        <code>yield from other_iterable</code>
+        <p>Delegates to another iterable — flattens one level. Cleaner than a nested for-yield loop.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Lazy file reading</div>
+        <code>for line in open("file.txt"):</code>
+        <p>File objects are iterators. Lines are loaded one at a time — constant memory regardless of file size.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">islice — take N from generator</div>
+        <code>itertools.islice(gen(), 10)</code>
+        <p>Take first N items from any iterator without consuming the rest.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- WRAP-UP -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>The iterator protocol is two methods: <code>__iter__</code> returns the iterator object, <code>__next__</code> returns the next value or raises <code>StopIteration</code>. Python's <code>for</code> loop is just syntactic sugar over these two calls.</li>
+      <li>An <strong>iterable</strong> (like <code>list</code>) can be iterated multiple times. An <strong>iterator</strong> (like <code>list_iterator</code> or a generator) is stateful — exhausted after one pass. Know the difference.</li>
+      <li><code>yield</code> turns a function into a generator factory. The function body is suspended at each <code>yield</code> and resumed on the next <code>next()</code> call. This replaces an entire iterator class with a few lines of readable code.</li>
+      <li>Generator expressions <code>(x for x in ...)</code> are the lazy equivalent of list comprehensions. They use O(1) memory regardless of input size — ideal for large data pipelines.</li>
+      <li>Real-world generators shine for large file processing, infinite sequences, and lazy pipelines. The pattern: chain generator functions together — each transforms the stream without materializing the full dataset.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 11</h4>
+      <ul>
+        <li>Implement a <code>FibonacciIterator</code> class using <code>__iter__</code>/<code>__next__</code>, then rewrite it as a generator function with <code>yield</code> — compare the two</li>
+        <li>Write a generator <code>chunked(iterable, size)</code> that yields lists of <code>size</code> elements — useful for batch processing</li>
+        <li>Build a lazy CSV reader generator that reads a file line by line and yields parsed rows as dicts (similar to <code>csv.DictReader</code> but built from scratch)</li>
+        <li>Use a generator expression pipeline to: read a list of numbers, keep only primes, square them, and sum the first 20 results — without ever building the full list</li>
+        <li>Experiment with <code>next(gen, default)</code> — the two-argument form that returns a default instead of raising <code>StopIteration</code></li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 11: Decorators Deep Dive</strong><br>
+      You've already seen <code>@property</code> and the decorator syntax. Tomorrow you'll learn exactly how decorators work under the hood — functions that wrap other functions — and how to write your own, including decorators with arguments and stacking multiple decorators. The Java parallel is Spring AOP <code>@Around</code> advice.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day9.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day11.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 10;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

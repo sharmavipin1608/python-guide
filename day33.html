@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 33 — Docker + Python | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/dockerfile.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 33 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 33</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>Docker + Python</h1>
+  <p>Containerize your Python apps the right way — slim images, multi-stage builds, and docker-compose orchestration. If you've shipped Java apps with Docker, most concepts transfer directly.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>Writing a Dockerfile for a FastAPI app — base image, dependencies, entrypoint <span style="color:#555">~15 min</span></li>
+        <li>Multi-stage builds — slim final image, no dev tools in prod <span style="color:#555">~15 min</span></li>
+        <li>.dockerignore — what to keep out of the image <span style="color:#555">~5 min</span></li>
+        <li>docker-compose — running FastAPI + Postgres together <span style="color:#555">~20 min</span></li>
+        <li>Environment variables in containers <span style="color:#555">~10 min</span></li>
+        <li>Health checks <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>FROM python:3.12-slim</strong> → like <code>FROM eclipse-temurin:21-jre-alpine</code></li>
+        <li><strong>Multi-stage build</strong> → Maven build stage + runtime stage</li>
+        <li><strong>docker-compose</strong> → same concept as Java; Spring Boot devs use it too</li>
+        <li><strong>ENTRYPOINT uvicorn</strong> → like <code>java -jar app.jar</code></li>
+        <li><strong>ENV / ARG</strong> → Spring <code>SPRING_DATASOURCE_URL</code> env var pattern</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- DOCKERFILE BASICS -->
+  <section>
+    <h2>1. Dockerfile for a FastAPI App</h2>
+    <p>A Dockerfile is a recipe for building a container image. For Python, the key decisions are: which base image, how to install dependencies, and how to start the app.</p>
+
+    <h3>A Simple Dockerfile</h3>
+    <div class="python-block">
+      <span class="block-label">Dockerfile</span>
+      <pre><code class="language-dockerfile"># Use the official slim Python image
+FROM python:3.12-slim
+
+# Set working directory inside the container
+WORKDIR /app
+
+# Copy dependency list first (Docker layer caching trick)
+COPY requirements.txt .
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Expose the port uvicorn will listen on
+EXPOSE 8000
+
+# Start the app
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Layer caching trick:</strong> Copy <code>requirements.txt</code> and run <code>pip install</code> <em>before</em> copying your source code. Docker caches each layer — if your code changes but requirements.txt doesn't, pip install won't re-run. This is the same trick Java Dockerfiles use with pom.xml.
+    </div>
+
+    <h3>requirements.txt vs pyproject.toml</h3>
+    <p>For Docker builds, a plain <code>requirements.txt</code> (generated with <code>pip freeze &gt; requirements.txt</code> or <code>pip-compile</code>) is the most straightforward. You can also use <code>pip install .</code> if you have a <code>pyproject.toml</code>.</p>
+
+    <div class="python-block">
+      <span class="block-label">requirements.txt</span>
+      <pre><code class="language-text">fastapi==0.115.0
+uvicorn[standard]==0.30.0
+sqlalchemy==2.0.35
+pydantic-settings==2.5.2
+psycopg2-binary==2.9.9</code></pre>
+    </div>
+
+    <h3>Building and Running</h3>
+    <div class="shell-block">
+      <span class="prompt">$ </span>docker build -t myapp:latest .<br>
+      <span class="prompt">$ </span>docker run -p 8000:8000 myapp:latest<br>
+      <span class="prompt">$ </span>docker run -p 8000:8000 -e DATABASE_URL=postgresql://... myapp:latest
+    </div>
+  </section>
+
+  <!-- MULTI-STAGE BUILD -->
+  <section>
+    <h2>2. Multi-Stage Builds</h2>
+    <p>Some Python packages (like psycopg2, Pillow) need C compiler tools to build. You don't want those tools in your production image — they bloat the size and increase attack surface. Multi-stage builds solve this exactly like they do in Java.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — multi-stage</span>
+        <pre><code class="language-dockerfile"># Stage 1: Build
+FROM maven:3.9-eclipse-temurin-21 AS build
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline
+COPY src ./src
+RUN mvn package -DskipTests
+
+# Stage 2: Runtime (slim)
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=build /app/target/app.jar .
+CMD ["java", "-jar", "app.jar"]</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — multi-stage</span>
+        <pre><code class="language-dockerfile"># Stage 1: Build wheels
+FROM python:3.12 AS builder
+WORKDIR /build
+COPY requirements.txt .
+# Build binary wheels (needs gcc, etc.)
+RUN pip wheel --no-cache-dir \
+    --wheel-dir /wheels \
+    -r requirements.txt
+
+# Stage 2: Runtime (slim, no build tools)
+FROM python:3.12-slim
+WORKDIR /app
+# Install pre-built wheels — no compiler needed
+COPY --from=builder /wheels /wheels
+RUN pip install --no-cache-dir \
+    --no-index --find-links=/wheels /wheels/*.whl
+COPY . .
+EXPOSE 8000
+CMD ["uvicorn", "main:app", \
+     "--host", "0.0.0.0", "--port", "8000"]</code></pre>
+      </div>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Image size impact:</strong> A single-stage build with build tools can easily be 800MB+. A multi-stage slim build is typically 150–200MB for a FastAPI app. Always use multi-stage for production images.
+    </div>
+  </section>
+
+  <!-- DOCKERIGNORE -->
+  <section>
+    <h2>3. .dockerignore</h2>
+    <p>The <code>.dockerignore</code> file works exactly like <code>.gitignore</code> — it tells Docker what to exclude from the build context. Without it, your entire project directory (including <code>.git</code>, <code>__pycache__</code>, local <code>.env</code> files) gets sent to the Docker daemon.</p>
+
+    <div class="python-block">
+      <span class="block-label">.dockerignore</span>
+      <pre><code class="language-text"># Python cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environment — NEVER include this
+.venv/
+venv/
+
+# Environment files — secrets must not be baked into the image
+.env
+.env.*
+
+# Dev/test artifacts
+*.egg-info/
+dist/
+build/
+htmlcov/
+
+# Version control
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Critical:</strong> Never let <code>.env</code> files get into a Docker image. Secrets baked into an image are exposed to anyone who pulls the image. Use environment variables or secrets managers at runtime instead.
+    </div>
+  </section>
+
+  <!-- DOCKER COMPOSE -->
+  <section>
+    <h2>4. docker-compose: FastAPI + Postgres</h2>
+    <p>docker-compose lets you define and run multi-container apps with a single YAML file. For a typical FastAPI app with a database, you need at minimum two services: your app and Postgres.</p>
+
+    <div class="python-block">
+      <span class="block-label">docker-compose.yml</span>
+      <pre><code class="language-yaml">version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: appdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"          # expose to host for debugging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://appuser:secret@db:5432/appdb
+      SECRET_KEY: dev-secret-key
+      ENVIRONMENT: development
+    depends_on:
+      db:
+        condition: service_healthy    # wait for db healthcheck
+    volumes:
+      - .:/app                        # mount code for hot reload in dev
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  postgres_data:</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>docker-compose up          # start everything<br>
+      <span class="prompt">$ </span>docker-compose up -d        # detached (background)<br>
+      <span class="prompt">$ </span>docker-compose logs -f app  # follow app logs<br>
+      <span class="prompt">$ </span>docker-compose down         # stop and remove containers<br>
+      <span class="prompt">$ </span>docker-compose down -v      # also remove volumes (wipes DB)
+    </div>
+
+    <h3>Service Discovery</h3>
+    <p>In docker-compose, services find each other by name. Your app connects to <code>db:5432</code> — not <code>localhost:5432</code>. Docker's internal DNS resolves <code>db</code> to the Postgres container's IP. This is why <code>DATABASE_URL</code> uses <code>@db:5432</code> above.</p>
+
+    <div class="callout-teal">
+      <strong>Java parallel:</strong> This is the same pattern Spring Boot developers use — a docker-compose.yml with a <code>spring-app</code> service and a <code>postgres</code> or <code>mysql</code> service. The <code>depends_on</code> + healthcheck pattern is especially important because Postgres takes a second to be ready.
+    </div>
+  </section>
+
+  <!-- ENVIRONMENT VARIABLES -->
+  <section>
+    <h2>5. Environment Variables in Containers</h2>
+    <p>The 12-factor app principle says config should come from the environment — never hardcoded or baked into the image. Docker gives you several ways to inject environment variables.</p>
+
+    <h3>Three Ways to Pass Config</h3>
+    <div class="python-block">
+      <span class="block-label">docker-compose.yml — three approaches</span>
+      <pre><code class="language-yaml">services:
+  app:
+    # Approach 1: inline values (fine for non-secrets)
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: info
+
+    # Approach 2: reference host env vars (value comes from shell)
+    environment:
+      SECRET_KEY:         # no value = read from host environment
+      DATABASE_URL:
+
+    # Approach 3: env_file (best for local dev)
+    env_file:
+      - .env              # reads KEY=VALUE pairs from file
+      - .env.local        # local overrides (gitignored)</code></pre>
+    </div>
+
+    <h3>Reading Env Vars in Python</h3>
+    <div class="python-block">
+      <span class="block-label">config.py</span>
+      <pre><code class="language-python">from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    database_url: str
+    secret_key: str
+    environment: str = "development"
+    log_level: str = "info"
+
+    class Config:
+        env_file = ".env"          # for local dev without Docker
+
+settings = Settings()              # reads from environment at startup
+print(settings.database_url)       # postgresql://appuser:secret@db:5432/appdb</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Never use ARG for secrets.</strong> Docker ARG values are baked into the image layers and visible with <code>docker history</code>. Always use ENV or runtime environment variables for secrets.
+    </div>
+  </section>
+
+  <!-- HEALTH CHECKS -->
+  <section>
+    <h2>6. Health Checks</h2>
+    <p>A health check lets Docker (and orchestrators like Kubernetes) know whether your container is actually ready to serve traffic — not just that the process started.</p>
+
+    <h3>FastAPI Health Endpoint</h3>
+    <div class="python-block">
+      <span class="block-label">main.py</span>
+      <pre><code class="language-python">from fastapi import FastAPI
+from sqlalchemy import text
+from database import engine
+
+app = FastAPI()
+
+@app.get("/health")
+async def health():
+    """Health check endpoint — used by Docker and load balancers."""
+    try:
+        # Verify DB connection is alive
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ok", "database": "connected"}
+    except Exception as e:
+        return {"status": "error", "database": str(e)}, 503</code></pre>
+    </div>
+
+    <h3>Dockerfile HEALTHCHECK Instruction</h3>
+    <div class="python-block">
+      <span class="block-label">Dockerfile</span>
+      <pre><code class="language-dockerfile">FROM python:3.12-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8000
+
+# Health check: curl the /health endpoint every 30s
+# Start checking after 10s, fail after 3 retries
+HEALTHCHECK --interval=30s --timeout=5s \
+            --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>docker ps              # shows health status: healthy / unhealthy / starting<br>
+      <span class="prompt">$ </span>docker inspect &lt;container&gt; | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['State']['Health'])"
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Base image</div>
+        <code>FROM python:3.12-slim</code>
+        <p>Use -slim for smaller images; -alpine is smaller but has compat issues with some C extensions</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Layer caching</div>
+        <code>COPY requirements.txt .</code>
+        <p>Copy deps file before source code so pip install is cached</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">No-cache install</div>
+        <code>pip install --no-cache-dir -r requirements.txt</code>
+        <p>Avoids storing pip cache in the image layer</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Start app</div>
+        <code>CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]</code>
+        <p>JSON array form (exec form) — preferred over shell form</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Build image</div>
+        <code>docker build -t myapp:latest .</code>
+        <p>-t tags the image; . is the build context</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Run container</div>
+        <code>docker run -p 8000:8000 -e KEY=val myapp</code>
+        <p>-p maps host:container port; -e sets env vars</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Compose up</div>
+        <code>docker-compose up -d</code>
+        <p>Start all services detached; use logs -f to follow</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Compose down</div>
+        <code>docker-compose down -v</code>
+        <p>Stop and remove containers; -v also removes named volumes</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Multi-stage copy</div>
+        <code>COPY --from=builder /wheels /wheels</code>
+        <p>Copy artifacts from a previous build stage</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Health check</div>
+        <code>HEALTHCHECK --interval=30s CMD curl -f http://localhost:8000/health</code>
+        <p>Docker polls this; container marked unhealthy if it fails</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Service discovery</div>
+        <code>postgresql://user:pass@db:5432/mydb</code>
+        <p>Use service name (db) not localhost inside compose network</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Exec into container</div>
+        <code>docker exec -it &lt;name&gt; bash</code>
+        <p>Open interactive shell in running container</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- WRAP UP -->
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Copy <code>requirements.txt</code> and run <code>pip install</code> before copying source code — Docker caches layers, so unchanged deps won't reinstall on every build.</li>
+      <li>Multi-stage builds are the standard for production Python images: build wheels with a full image, install them into a slim runtime image. Cuts image size by 4–5x.</li>
+      <li>Never bake secrets into images. Use <code>env_file</code> locally and runtime environment variables in production. <code>ARG</code> values are visible in image history.</li>
+      <li>In docker-compose, services communicate by service name, not <code>localhost</code>. Your app's <code>DATABASE_URL</code> should use <code>@db:5432</code>, not <code>@localhost:5432</code>.</li>
+      <li>Health checks are essential for any real deployment. Expose a <code>/health</code> endpoint that verifies DB connectivity — orchestrators use it to route traffic.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 34</h4>
+      <ul>
+        <li>Write a Dockerfile for the FastAPI task manager from Day 29</li>
+        <li>Add a docker-compose.yml with a Postgres service and verify <code>depends_on</code> + healthcheck works</li>
+        <li>Try a multi-stage build and compare image sizes with <code>docker images</code></li>
+        <li>Add a <code>/health</code> endpoint that checks the DB connection</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 34 — Environment + Config Patterns:</strong> Now that your app runs in Docker, how do you manage config across dev, staging, and prod? We'll cover python-dotenv, Pydantic BaseSettings, and the 12-factor app approach to config — so you never hardcode a connection string again.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day32.html" class="nav-btn">← Day 32: Pydantic</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day34.html" class="nav-btn">Day 34: Config Patterns →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-33-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-33-done') === 'true';
+    localStorage.setItem('day-33-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 13 — Type Hints + Dataclasses | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 13 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 13</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Type Hints + Dataclasses</h1>
+  <p>Python is dynamically typed, but type hints give your IDE and static analysis tools everything they need to catch bugs before runtime. <code>@dataclass</code> then eliminates the boilerplate of writing <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code> by hand.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>Why type hints exist and what enforces them (tooling, not Python itself)</li>
+        <li>Basic hints: <code>str</code>, <code>int</code>, <code>float</code>, <code>bool</code>, <code>None</code></li>
+        <li><code>typing</code> module: <code>Optional</code>, <code>Union</code>, <code>list</code>, <code>dict</code>, <code>tuple</code>, <code>Any</code></li>
+        <li>Function signature hints and return types</li>
+        <li><code>@dataclass</code> — auto-generated <code>__init__</code>, <code>__repr__</code>, <code>__eq__</code></li>
+        <li>Dataclass fields: defaults, <code>field()</code>, <code>frozen=True</code></li>
+        <li><code>ClassVar</code>, <code>InitVar</code>, and <code>__post_init__</code></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li>Type hints → Java's explicit type declarations — but optional and not enforced at runtime</li>
+        <li><code>Optional[str]</code> → <code>Optional&lt;String&gt;</code> — may be <code>None</code></li>
+        <li><code>Union[int, str]</code> → no direct equivalent (closest: generics or sealed types)</li>
+        <li><code>@dataclass</code> → Lombok <code>@Data</code> or Java 16+ <code>record</code></li>
+        <li><code>frozen=True</code> dataclass → Java <code>record</code> (immutable by default)</li>
+        <li><code>field(default_factory=list)</code> → Lombok's <code>@Builder.Default</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Type Hints</h2>
+
+    <h3>The basics — variable and function hints</h3>
+    <p>Type hints are annotations — they're stored as metadata and ignored at runtime. Tools like mypy, pyright, and your IDE use them to catch type errors, suggest completions, and generate docs. Add them progressively; you don't have to annotate everything.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">// Types are enforced at compile time
+String name = "Alice";
+int age = 30;
+boolean active = true;
+
+public String greet(String name, int times) {
+    return name.repeat(times);
+}
+
+public Optional&lt;String&gt; findUser(int id) {
+    return Optional.ofNullable(db.get(id));
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># Variable hints — purely informational
+name: str = "Alice"
+age: int = 30
+active: bool = True
+score: float = 9.5
+
+# Function hints — parameters and return type
+def greet(name: str, times: int) -> str:
+    return name * times
+
+def find_user(user_id: int) -> str | None:
+    # Python 3.10+: use X | Y instead of Union[X, Y]
+    return users.get(user_id)
+
+# Still works without hints — hints are never enforced
+greet("Alice", 3)         # fine
+greet(42, "oops")         # runs! (mypy would flag this)</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Runtime behaviour:</strong> Python does NOT enforce type hints. <code>def add(x: int, y: int) -> int: return x + y</code> happily accepts strings. Type hints are a contract with your tools, not the interpreter.
+    </div>
+
+    <h3>Collection types</h3>
+    <p>From Python 3.9+ you can use built-in types directly in hints (<code>list[str]</code>, <code>dict[str, int]</code>). For older code you'll encounter <code>typing.List</code>, <code>typing.Dict</code> etc. — they're equivalent.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from typing import Any
+
+# Python 3.9+ — use built-ins directly (preferred)
+def process_names(names: list[str]) -> dict[str, int]:
+    return {name: len(name) for name in names}
+
+def flatten(matrix: list[list[int]]) -> list[int]:
+    return [n for row in matrix for n in row]
+
+# Tuples — fixed length, specify each element type
+def get_coords() -> tuple[float, float]:
+    return (51.5, -0.1)
+
+# Tuples — variable length (homogeneous)
+def get_scores() -> tuple[int, ...]:
+    return (90, 85, 92, 88)
+
+# Any — opt out of type checking for this value
+def legacy_parse(data: Any) -> dict:
+    return dict(data)</code></pre>
+    </div>
+
+    <h3>Optional, Union, and the new syntax</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from typing import Optional, Union
+
+# Optional[X] means the value can be X or None
+def find(key: str) -> Optional[str]:   # classic style
+    return cache.get(key)
+
+def find_v2(key: str) -> str | None:   # Python 3.10+ (preferred)
+    return cache.get(key)
+
+# Union[X, Y] — one of several types
+def parse_id(raw: Union[str, int]) -> int:   # classic
+    return int(raw)
+
+def parse_id_v2(raw: str | int) -> int:      # Python 3.10+
+    return int(raw)
+
+# Callable — type of a function
+from typing import Callable
+
+def apply(fn: Callable[[int, int], int], a: int, b: int) -> int:
+    return fn(a, b)
+
+apply(lambda x, y: x + y, 3, 4)  # 7</code></pre>
+    </div>
+
+    <h3>Type aliases and TypeVar</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from typing import TypeVar, TypeAlias
+
+# Type alias — give a complex type a readable name
+UserId: TypeAlias = int
+UserMap: TypeAlias = dict[UserId, str]
+
+def get_users() -> UserMap:
+    return {1: "Alice", 2: "Bob"}
+
+# TypeVar — for generic functions (like Java generics)
+T = TypeVar("T")
+
+def first(items: list[T]) -> T | None:
+    return items[0] if items else None
+
+# mypy knows the return type matches the input element type
+result: str | None = first(["a", "b", "c"])  # inferred as str | None</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>@dataclass</h2>
+
+    <h3>Eliminating boilerplate</h3>
+    <p><code>@dataclass</code> reads field annotations and auto-generates <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code>. You write field declarations; Python writes the methods. This is the Python equivalent of Lombok <code>@Data</code> or a Java <code>record</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — record (Java 16+)</span>
+        <pre><code class="language-java">// Java record — immutable, auto-generates
+// constructor, accessors, equals, hashCode, toString
+public record Point(int x, int y) {}
+
+// Lombok @Data on a mutable class
+@Data
+public class User {
+    private String name;
+    private int age;
+    private String email;
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+    # Auto-generated:
+    # __init__(self, x: int, y: int)
+    # __repr__ → Point(x=3, y=4)
+    # __eq__   → compares field by field
+
+p1 = Point(3, 4)
+p2 = Point(3, 4)
+p3 = Point(0, 0)
+
+print(p1)         # Point(x=3, y=4)
+print(p1 == p2)   # True  — value equality
+print(p1 == p3)   # False
+print(p1.x)       # 3 — direct attribute access</code></pre>
+      </div>
+    </div>
+
+    <h3>Default values and field()</h3>
+    <p>Fields with defaults must come after fields without defaults (same rule as function parameters). For mutable defaults like lists, you must use <code>field(default_factory=...)</code> — never a bare <code>[]</code> as default.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from dataclasses import dataclass, field
+from datetime import datetime
+
+@dataclass
+class Task:
+    title: str                                  # required
+    description: str = ""                       # optional with default
+    done: bool = False
+    tags: list[str] = field(default_factory=list)   # mutable default — MUST use field()
+    created_at: datetime = field(default_factory=datetime.now)
+
+    # DON'T do this — the list is shared across all instances!
+    # bad_tags: list[str] = []   ← bug: mutable default
+
+
+t1 = Task("Buy groceries")
+t2 = Task("Write code", tags=["python", "backend"])
+
+t1.tags.append("urgent")
+print(t1.tags)   # ['urgent']
+print(t2.tags)   # ['python', 'backend'] — separate list, correct!</code></pre>
+    </div>
+
+    <h3>frozen=True — immutable dataclasses</h3>
+    <p><code>frozen=True</code> makes instances immutable (like a Java <code>record</code>). Python raises <code>FrozenInstanceError</code> on attempted mutation, and also generates <code>__hash__</code> so frozen dataclasses can be used in sets and as dict keys.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class Color:
+    r: int
+    g: int
+    b: int
+
+    def to_hex(self) -> str:
+        return f"#{self.r:02x}{self.g:02x}{self.b:02x}"
+
+
+red = Color(255, 0, 0)
+print(red)            # Color(r=255, g=0, b=0)
+print(red.to_hex())   # #ff0000
+
+# red.r = 128         # FrozenInstanceError!
+
+# Hashable — can use in sets and as dict keys
+palette = {red, Color(0, 255, 0), Color(0, 0, 255)}
+theme = {Color(255, 0, 0): "danger", Color(0, 128, 0): "success"}</code></pre>
+    </div>
+
+    <h3>__post_init__, ClassVar, and field metadata</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from dataclasses import dataclass, field, ClassVar
+from typing import ClassVar as CV
+
+@dataclass
+class BankAccount:
+    owner: str
+    _balance: float = field(default=0.0, repr=False)  # hidden from repr
+
+    # ClassVar — NOT a dataclass field, shared across instances
+    interest_rate: ClassVar[float] = 0.05
+
+    def __post_init__(self):
+        # Called after __init__ — use for validation or derived fields
+        if self._balance < 0:
+            raise ValueError(f"Balance cannot be negative: {self._balance}")
+        self.account_id = f"ACC-{id(self):x}"   # derived field
+
+    def deposit(self, amount: float) -> None:
+        self._balance += amount
+
+    @property
+    def balance(self) -> float:
+        return self._balance
+
+
+acc = BankAccount("Alice", 1000.0)
+print(acc)               # BankAccount(owner='Alice') — _balance hidden (repr=False)
+print(acc.balance)       # 1000.0
+print(acc.account_id)    # ACC-... (derived)
+print(BankAccount.interest_rate)  # 0.05</code></pre>
+    </div>
+
+    <h3>dataclass vs NamedTuple vs TypedDict</h3>
+    <div class="callout-teal">
+      <strong>Quick decision guide:</strong><br>
+      Use <code>@dataclass</code> when you need a mutable object with methods and validation.<br>
+      Use <code>@dataclass(frozen=True)</code> when you need an immutable value object (like a Java record).<br>
+      Use <code>NamedTuple</code> when you want tuple unpacking + named fields + immutability (no methods).<br>
+      Use <code>TypedDict</code> when working with JSON/dicts and you want type hints on keys without a class.
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Basic hints</div>
+        <code>name: str / age: int / score: float / active: bool</code>
+        <p>Use built-in types directly. Not enforced at runtime — tooling only.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Optional / nullable</div>
+        <code>x: str | None</code>
+        <p>Python 3.10+. Use <code>Optional[str]</code> from <code>typing</code> for older code.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Collections</div>
+        <code>list[str] / dict[str, int] / set[int] / tuple[int, str]</code>
+        <p>Built-in generics since Python 3.9. No import needed.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Union types</div>
+        <code>int | str / float | None</code>
+        <p>Python 3.10+. Use <code>Union[int, str]</code> from <code>typing</code> for older code.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Basic dataclass</div>
+        <code>@dataclass / class Foo: / x: int / y: str = ""</code>
+        <p>Auto-generates <code>__init__</code>, <code>__repr__</code>, <code>__eq__</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Mutable default</div>
+        <code>tags: list[str] = field(default_factory=list)</code>
+        <p>Never use <code>= []</code> as a default — use <code>field(default_factory=list)</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Frozen / immutable</div>
+        <code>@dataclass(frozen=True)</code>
+        <p>Raises on mutation. Also generates <code>__hash__</code> for use in sets/dicts.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Post-init hook</div>
+        <code>def __post_init__(self): ...</code>
+        <p>Called after generated <code>__init__</code>. Use for validation or derived fields.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Class variable</div>
+        <code>count: ClassVar[int] = 0</code>
+        <p>Excluded from <code>__init__</code>. Import <code>ClassVar</code> from <code>typing</code>.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Type hints are a contract with tools, not the runtime. Python never enforces them — but mypy, pyright, and your IDE use them to catch bugs, power autocomplete, and generate documentation. Add them from the start on new code.</li>
+      <li>Use <code>X | None</code> (Python 3.10+) instead of <code>Optional[X]</code>. Use <code>X | Y</code> instead of <code>Union[X, Y]</code>. Use built-in <code>list[str]</code> instead of <code>typing.List[str]</code>. The old forms still work but are verbose.</li>
+      <li><code>@dataclass</code> generates <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code> from your field annotations — it's Lombok <code>@Data</code> or a Java Record, built into the standard library since Python 3.7.</li>
+      <li>Never use a mutable object as a bare default (<code>tags: list = []</code>). That list is shared across all instances. Always use <code>field(default_factory=list)</code> — Python will flag this as an error if you forget.</li>
+      <li><code>frozen=True</code> gives you immutability and hashability — the Python equivalent of a Java <code>record</code>. Use it for value objects that should never change after creation (coordinates, money amounts, config entries).</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 14</h4>
+      <ul>
+        <li>Add type hints to all functions from Days 8–12 practice exercises and run mypy on them</li>
+        <li>Create a <code>@dataclass</code> called <code>Product</code> with <code>name</code>, <code>price</code>, <code>quantity</code>, and a <code>total_value</code> property; add <code>__post_init__</code> to validate price is positive</li>
+        <li>Make a <code>frozen=True</code> dataclass <code>Coordinate</code> with lat/lon and a <code>distance_to</code> method — use it as a dict key</li>
+        <li>Explore <code>dataclasses.asdict()</code> and <code>dataclasses.astuple()</code> for serialization</li>
+        <li>Compare a <code>NamedTuple</code> and a <code>@dataclass(frozen=True)</code> for the same data — note the differences in iteration, unpacking, and method support</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 14: Mini Project — Refactor CLI with OOP</strong><br>
+      You'll apply everything from Week 2 — classes, dataclasses, decorators, type hints, and properties — by rewriting the Day 7 task manager into a clean, properly structured OOP codebase. This is where the concepts click into a real working system.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day12.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day14.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 13;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

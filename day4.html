@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 4 — Data Structures | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 4 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 04</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Data Structures</h1>
+  <p>Master Python's core containers: lists, tuples, dicts, and sets. Learn when to use each, common operations, and how they relate to Java collections.</p>
+</div>
+
+<main>
+
+  <!-- ── PLAN ── -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>list — ordered, mutable (like ArrayList)</li>
+        <li>tuple — ordered, immutable (like an immutable List / Record)</li>
+        <li>dict — key-value store (like HashMap), insertion-ordered since Python 3.7</li>
+        <li>set — unordered unique elements (like HashSet)</li>
+        <li>When to use each</li>
+        <li>Common operations: append, pop, get, in, len, sorted, enumerate, zip</li>
+        <li>Tuple unpacking and dict unpacking with **</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels at a glance</h4>
+      <ul>
+        <li><code>list</code> ≈ <code>ArrayList&lt;T&gt;</code> — ordered, dynamic resize</li>
+        <li><code>tuple</code> ≈ Immutable list or Java record — fixed at creation</li>
+        <li><code>dict</code> ≈ <code>HashMap&lt;K, V&gt;</code> — key-value, insertion-ordered since Python 3.7</li>
+        <li><code>set</code> ≈ <code>HashSet&lt;T&gt;</code> — unique elements, no order</li>
+        <li>Tuple unpacking ≈ destructuring in Java 16+ records</li>
+        <li>Dict unpacking with <code>**</code> ≈ spreading with varargs or builder patterns</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── LISTS ── -->
+  <section>
+    <h2>1. Lists</h2>
+
+    <p>A <code>list</code> is Python's workhorse collection — ordered, mutable, and able to hold mixed types (though you'll rarely want to). Think <code>ArrayList&lt;Object&gt;</code> but without the generic type constraint.</p>
+
+    <h3>Creating and basic operations</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">// Fixed-size immutable list
+List&lt;String&gt; names = List.of("Alice", "Bob");
+
+// Mutable list
+List&lt;String&gt; mutable = new ArrayList&lt;&gt;();
+mutable.add("Alice");
+mutable.add("Bob");
+
+int size = mutable.size();           // 2
+String first = mutable.get(0);      // "Alice"
+boolean has = mutable.contains("Bob"); // true</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># Lists use square brackets
+names = ["Alice", "Bob"]
+
+# Already mutable — no ArrayList needed
+names.append("Carol")    # add to end
+
+size = len(names)         # 3  (function, not method)
+first = names[0]          # "Alice"
+last = names[-1]          # "Carol"  (negative indexing!)
+has = "Bob" in names      # True  (use 'in', not .contains())</code></pre>
+      </div>
+    </div>
+
+    <h3>Modifying lists: append, extend, insert, pop, remove</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">fruits = ["apple", "banana"]
+
+# Add elements
+fruits.append("cherry")        # end: ["apple", "banana", "cherry"]
+fruits.insert(1, "avocado")    # at index: ["apple", "avocado", "banana", "cherry"]
+fruits.extend(["date", "fig"]) # add multiple (like addAll)
+
+# Remove elements
+fruits.remove("banana")   # by value (first occurrence) — ValueError if not found
+popped = fruits.pop()     # remove & return last item
+popped = fruits.pop(0)    # remove & return at index
+del fruits[1]             # delete by index (no return value)
+
+# Other common ops
+fruits.sort()              # in-place sort (returns None!)
+fruits.reverse()           # in-place reverse
+fruits_copy = fruits.copy() # shallow copy
+fruits.clear()             # remove all</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Gotcha:</strong> <code>list.sort()</code> sorts in-place and returns <code>None</code>. Don't write <code>x = my_list.sort()</code> — you'll get <code>None</code>! Use <code>sorted(my_list)</code> if you want a new sorted list while keeping the original.
+    </div>
+
+    <h3>Slicing and indexing</h3>
+
+    <p>Slicing is one of Python's superpowers. The syntax is <code>list[start:stop:step]</code> — the stop index is exclusive (like Java's <code>subList</code>).</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">List&lt;Integer&gt; nums = List.of(0,1,2,3,4,5,6,7,8,9);
+
+// Sublist (inclusive start, exclusive end)
+nums.subList(2, 5);   // [2, 3, 4]
+
+// First 3
+nums.subList(0, 3);   // [0, 1, 2]
+
+// Last 3 — verbose
+nums.subList(nums.size() - 3, nums.size());</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">nums = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
+# Slice: [start:stop]  (stop is exclusive)
+nums[2:5]     # [2, 3, 4]
+
+# Omit start or stop
+nums[:3]      # [0, 1, 2]    first 3
+nums[7:]      # [7, 8, 9]    from index 7 on
+nums[-3:]     # [7, 8, 9]    last 3 (negative!)
+
+# Step
+nums[::2]     # [0, 2, 4, 6, 8]  every 2nd
+nums[1::2]    # [1, 3, 5, 7, 9]  odd-indexed
+
+# Reverse a list with slicing
+nums[::-1]    # [9, 8, 7, ..., 0]
+
+# Slicing always returns a NEW list (shallow copy)
+copy = nums[:]</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── TUPLES ── -->
+  <section>
+    <h2>2. Tuples</h2>
+
+    <p>A <code>tuple</code> is an immutable sequence. Once created, you can't add, remove, or change elements. Think of it as a lightweight, fixed-size container — like a Java record but without named fields.</p>
+
+    <h3>Creating tuples</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">// No built-in tuple — use records (Java 16+)
+record Point(int x, int y) {}
+Point p = new Point(3, 4);
+p.x();   // 3
+
+// Or unmodifiable list
+List&lt;Object&gt; pair = List.of("Alice", 30);</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># Tuples use parentheses (or just commas)
+point = (3, 4)
+pair = ("Alice", 30)
+
+# Parentheses are optional — the comma makes it a tuple
+t = 1, 2, 3      # same as (1, 2, 3)
+
+# Single-element tuple NEEDS a trailing comma
+single = (42,)    # tuple with one element
+not_tuple = (42)  # just the int 42 in parentheses
+
+# Empty tuple
+empty = ()
+
+# Access by index (same as list)
+point[0]   # 3
+point[-1]  # 4</code></pre>
+      </div>
+    </div>
+
+    <h3>Immutability and when to use tuples</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">coords = (10, 20)
+# coords[0] = 99  # TypeError: 'tuple' does not support item assignment
+
+# Use tuples when:
+# 1. Data shouldn't change (coordinates, RGB colors, DB rows)
+# 2. As dict keys (lists can't be dict keys — they're mutable)
+# 3. Returning multiple values from functions (Day 3)
+# 4. Unpacking into variables
+
+# Tuples are hashable (if contents are hashable)
+locations = {(40.7, -74.0): "NYC", (51.5, -0.1): "London"}</code></pre>
+    </div>
+
+    <h3>Tuple unpacking</h3>
+
+    <p>Unpacking is one of Python's most elegant features. You assign each element of a tuple (or any iterable) to separate variables in one line.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Basic unpacking
+x, y = (3, 4)     # x=3, y=4
+name, age = ("Alice", 30)
+
+# Swap two variables — no temp needed
+a, b = 1, 2
+a, b = b, a    # now a=2, b=1
+
+# Starred expression — capture the rest
+first, *rest = [1, 2, 3, 4, 5]
+# first = 1, rest = [2, 3, 4, 5]
+
+head, *middle, tail = [1, 2, 3, 4, 5]
+# head = 1, middle = [2, 3, 4], tail = 5
+
+# Ignore with _
+name, _, age = ("Alice", "middle_unused", 30)
+
+# Unpacking in loops — very common
+pairs = [("Alice", 30), ("Bob", 25), ("Carol", 35)]
+for name, age in pairs:
+    print(f"{name} is {age}")</code></pre>
+    </div>
+
+    <div class="callout callout-teal">
+      <strong>Key insight:</strong> Tuple unpacking works with any iterable (lists, tuples, strings, even generators). The star <code>*rest</code> expression is especially useful for splitting "head" from "tail" in data processing.
+    </div>
+  </section>
+
+  <!-- ── DICTS ── -->
+  <section>
+    <h2>3. Dicts</h2>
+
+    <p>A <code>dict</code> is a key-value store — Python's equivalent of Java's <code>HashMap</code>. Since Python 3.7, dicts preserve insertion order (like <code>LinkedHashMap</code>).</p>
+
+    <h3>Creating and accessing dicts</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">// Immutable map (Java 9+)
+Map&lt;String, Integer&gt; ages = Map.of(
+    "Alice", 30,
+    "Bob", 25
+);
+
+// Mutable
+Map&lt;String, Integer&gt; m = new HashMap&lt;&gt;();
+m.put("Alice", 30);
+
+int age = m.get("Alice");          // 30
+int safe = m.getOrDefault("X", 0); // 0
+boolean has = m.containsKey("Alice");</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># Dict literal with curly braces
+ages = {
+    "Alice": 30,
+    "Bob": 25,
+}
+
+# Access
+age = ages["Alice"]           # 30
+# ages["Unknown"]             # KeyError!
+
+# Safe access with .get() (like getOrDefault)
+age = ages.get("Unknown", 0)  # 0 (default)
+age = ages.get("Unknown")     # None (no default)
+
+# Check key existence
+"Alice" in ages    # True  (checks keys, not values)</code></pre>
+      </div>
+    </div>
+
+    <h3>Adding, updating, and removing keys</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">config = {"host": "localhost", "port": 5432}
+
+# Add or update — just assign
+config["db"] = "mydb"          # add new key
+config["port"] = 5433          # update existing
+
+# Remove
+del config["db"]               # delete key — KeyError if missing
+port = config.pop("port")     # remove & return — 5433
+val = config.pop("missing", None)  # no error, returns default
+
+# Merge dicts (Python 3.9+)
+defaults = {"host": "localhost", "port": 5432, "timeout": 30}
+overrides = {"port": 5433, "db": "prod"}
+
+# | operator creates a new merged dict (right side wins)
+merged = defaults | overrides
+# {"host": "localhost", "port": 5433, "timeout": 30, "db": "prod"}
+
+# |= updates in-place
+defaults |= overrides
+
+# Pre-3.9 approach with **
+merged = {**defaults, **overrides}  # same result</code></pre>
+    </div>
+
+    <h3>Iterating over dicts</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">user = {"name": "Alice", "age": 30, "role": "admin"}
+
+# Keys (default iteration)
+for key in user:
+    print(key)         # name, age, role
+
+# Values
+for val in user.values():
+    print(val)         # Alice, 30, admin
+
+# Both — like Java's entrySet()
+for key, val in user.items():
+    print(f"{key}: {val}")
+
+# Build a dict from lists with zip()
+keys = ["name", "age", "city"]
+values = ["Alice", 30, "NYC"]
+person = dict(zip(keys, values))
+# {"name": "Alice", "age": 30, "city": "NYC"}</code></pre>
+    </div>
+
+    <h3>Dict unpacking with **</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># ** unpacks a dict into keyword arguments
+def create_user(name, age, role="user"):
+    return {"name": name, "age": age, "role": role}
+
+data = {"name": "Alice", "age": 30}
+user = create_user(**data)  # same as create_user(name="Alice", age=30)
+
+# ** in dict literals — merge/override
+base = {"color": "blue", "size": "M"}
+custom = {"size": "L", "brand": "Nike"}
+
+combined = {**base, **custom}
+# {"color": "blue", "size": "L", "brand": "Nike"}</code></pre>
+    </div>
+  </section>
+
+  <!-- ── SETS ── -->
+  <section>
+    <h2>4. Sets</h2>
+
+    <p>A <code>set</code> is an unordered collection of unique elements — Python's <code>HashSet</code>. Sets are perfect for deduplication, membership testing, and mathematical set operations.</p>
+
+    <h3>Creating sets and basic operations</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">Set&lt;String&gt; tags = new HashSet&lt;&gt;();
+tags.add("python");
+tags.add("java");
+tags.add("python");  // duplicate ignored
+tags.size();         // 2
+
+// From list
+Set&lt;String&gt; unique = new HashSet&lt;&gt;(list);
+
+boolean has = tags.contains("python");  // true</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># Set literal with curly braces (no colons)
+tags = {"python", "java", "python"}  # {"python", "java"}
+len(tags)   # 2
+
+# Empty set — NOT {} (that's an empty dict!)
+empty = set()
+
+# From list — dedup
+nums = [1, 2, 2, 3, 3, 3]
+unique = set(nums)   # {1, 2, 3}
+
+# Membership (very fast — O(1) like HashSet)
+"python" in tags     # True
+
+# Add and remove
+tags.add("go")
+tags.remove("java")       # KeyError if missing
+tags.discard("missing")   # no error if missing</code></pre>
+      </div>
+    </div>
+
+    <h3>Set operations: union, intersection, difference</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">backend = {"python", "java", "go", "rust"}
+frontend = {"javascript", "typescript", "python", "rust"}
+
+# Union — all languages in either set
+backend | frontend
+# {"python", "java", "go", "rust", "javascript", "typescript"}
+
+# Intersection — in both
+backend & frontend
+# {"python", "rust"}
+
+# Difference — in backend but not frontend
+backend - frontend
+# {"java", "go"}
+
+# Symmetric difference — in one but not both
+backend ^ frontend
+# {"java", "go", "javascript", "typescript"}
+
+# Subset and superset checks
+{"python", "java"} <= backend    # True (subset)
+backend >= {"python", "java"}    # True (superset)
+
+# Practical use: find common elements between two lists
+list1 = [1, 2, 3, 4, 5]
+list2 = [4, 5, 6, 7, 8]
+common = set(list1) & set(list2)  # {4, 5}</code></pre>
+    </div>
+  </section>
+
+  <!-- ── CHOOSING ── -->
+  <section>
+    <h2>5. Choosing the Right Data Structure</h2>
+
+    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;margin:16px 0;">
+      <thead>
+        <tr style="border-bottom:1px solid #2a2a2a;">
+          <th style="text-align:left;padding:10px 8px;color:#888;font-weight:600;">Need</th>
+          <th style="text-align:left;padding:10px 8px;color:#888;font-weight:600;">Use</th>
+          <th style="text-align:left;padding:10px 8px;color:#888;font-weight:600;">Why</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 8px;color:#c0c0c0;">Ordered, mutable sequence</td>
+          <td style="padding:10px 8px;color:#f0e040;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">list</td>
+          <td style="padding:10px 8px;color:#666;">Most common — your default collection</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 8px;color:#c0c0c0;">Fixed data, dict keys, return values</td>
+          <td style="padding:10px 8px;color:#f0e040;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">tuple</td>
+          <td style="padding:10px 8px;color:#666;">Immutable, hashable, lightweight</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 8px;color:#c0c0c0;">Key-value lookup</td>
+          <td style="padding:10px 8px;color:#f0e040;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">dict</td>
+          <td style="padding:10px 8px;color:#666;">O(1) access by key, ordered since 3.7</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 8px;color:#c0c0c0;">Unique elements, fast membership</td>
+          <td style="padding:10px 8px;color:#f0e040;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">set</td>
+          <td style="padding:10px 8px;color:#666;">O(1) <code style="color:#f0e040;">in</code>, dedup, set math</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <strong>Performance tip:</strong> Use <code>in</code> for membership testing. It's O(1) for sets and dicts, but O(n) for lists. If you're checking membership repeatedly, convert your list to a set first: <code>lookup = set(my_list)</code>.
+    </div>
+
+    <h3>Common built-in functions that work across all collections</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">nums = [3, 1, 4, 1, 5, 9]
+
+len(nums)          # 6   — works on list, tuple, dict, set, str
+min(nums)          # 1
+max(nums)          # 9
+sum(nums)          # 23
+sorted(nums)       # [1, 1, 3, 4, 5, 9]  — new sorted list
+any([False, True, False])  # True  — any element truthy?
+all([True, True, True])    # True  — all elements truthy?
+
+# enumerate — index + value (replaces Java's int i = 0 loop)
+for i, val in enumerate(["a", "b", "c"]):
+    print(f"{i}: {val}")
+
+# zip — pair up two collections
+names = ["Alice", "Bob"]
+scores = [95, 82]
+for name, score in zip(names, scores):
+    print(f"{name}: {score}")</code></pre>
+    </div>
+  </section>
+
+  <!-- ── QUICK REFERENCE ── -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">List basics</div>
+        <code>[]</code> — empty list<br>
+        <code>.append(x)</code> — add to end<br>
+        <code>.pop()</code> — remove last<br>
+        <code>.insert(i, x)</code> — insert at index
+        <p>Mutable, ordered, allows duplicates</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">List slicing</div>
+        <code>a[1:4]</code> — items 1 to 3<br>
+        <code>a[:3]</code> — first 3<br>
+        <code>a[-2:]</code> — last 2<br>
+        <code>a[::-1]</code> — reversed copy
+        <p>Slices always return a new list</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Tuple basics</div>
+        <code>()</code> — empty tuple<br>
+        <code>(42,)</code> — single-element (trailing comma!)<br>
+        <code>x, y = (1, 2)</code> — unpacking<br>
+        <code>first, *rest = items</code> — starred
+        <p>Immutable, hashable, used as dict keys</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Dict basics</div>
+        <code>{}</code> — empty dict<br>
+        <code>d["key"]</code> — access (KeyError if missing)<br>
+        <code>d.get("key", default)</code> — safe access<br>
+        <code>d.items()</code> — key-value pairs
+        <p>O(1) lookup, insertion-ordered since 3.7</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Dict merge (3.9+)</div>
+        <code>d1 | d2</code> — new merged dict<br>
+        <code>d1 |= d2</code> — merge in-place<br>
+        <code>{**d1, **d2}</code> — pre-3.9 merge
+        <p>Right side wins on key conflicts</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Set basics</div>
+        <code>set()</code> — empty set (NOT <code>{}</code>)<br>
+        <code>a | b</code> — union<br>
+        <code>a & b</code> — intersection<br>
+        <code>a - b</code> — difference
+        <p>O(1) membership, unordered, no dupes</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Universal functions</div>
+        <code>len(x)</code>, <code>min(x)</code>, <code>max(x)</code>, <code>sum(x)</code><br>
+        <code>sorted(x)</code> — returns new sorted list<br>
+        <code>any(x)</code> / <code>all(x)</code> — boolean tests
+        <p>Work on lists, tuples, sets, dicts, strings</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Iteration helpers</div>
+        <code>enumerate(xs)</code> — index + value<br>
+        <code>zip(xs, ys)</code> — pair two sequences<br>
+        <code>reversed(xs)</code> — iterate backward
+        <p>No index counters needed — ever</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Membership testing</div>
+        <code>x in list</code> — O(n)<br>
+        <code>x in set</code> — O(1)<br>
+        <code>key in dict</code> — O(1), checks keys
+        <p>Use sets for repeated lookups</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── WRAP-UP ── -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>list</code> is your default collection — ordered, mutable, the Python equivalent of <code>ArrayList</code>. Slicing (<code>a[1:4]</code>, <code>a[::-1]</code>) is a superpower you don't have in Java.</li>
+      <li><code>tuple</code> is an immutable sequence. Use it for fixed data, dict keys, multiple return values, and unpacking. The trailing comma matters: <code>(42,)</code> vs <code>(42)</code>.</li>
+      <li><code>dict</code> is your HashMap. Access safely with <code>.get(key, default)</code>, iterate with <code>.items()</code>. Merge with <code>|</code> (Python 3.9+) or <code>{**d1, **d2}</code>.</li>
+      <li><code>set</code> gives O(1) membership testing and set math (<code>|</code>, <code>&</code>, <code>-</code>). Use it for dedup and fast lookups. Remember: empty set is <code>set()</code>, not <code>{}</code>.</li>
+      <li>Unpacking (<code>x, y = pair</code>, <code>first, *rest = items</code>) replaces verbose index-based access. Learn it — it's everywhere in idiomatic Python.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 5</h4>
+      <ul>
+        <li>Create a list of 10 numbers and practice slicing: first 5, last 3, every other, reversed</li>
+        <li>Build a word-frequency counter using a dict — count how many times each word appears in a sentence</li>
+        <li>Given two lists of tags, use sets to find common tags, tags unique to each list, and all tags combined</li>
+        <li>Write a function that returns <code>(min, max, average)</code> as a tuple and unpack the result</li>
+        <li>Merge two config dicts where the second overrides the first, using both <code>|</code> and <code>{**d1, **d2}</code></li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 5: Strings + File I/O</strong><br>
+      You'll master string manipulation (split, join, slicing), regular expressions with the <code>re</code> module, and file reading/writing with the <code>with</code> statement — Python's cleaner version of try-with-resources.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day3.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day5.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 4;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

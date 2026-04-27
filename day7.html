@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 7 — Mini Project: CLI Task Manager | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+    /* Project day: orange day badge */
+    .day-badge { background: #ff6b35; color: #fff; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 7 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Project</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Mini Project: CLI Task Manager</h1>
+  <p>Build a command-line task manager that persists data to JSON. Apply everything you've learned: functions, data structures, file I/O, error handling, and modules.</p>
+</div>
+
+<main>
+
+  <!-- ── PROJECT OVERVIEW ── -->
+  <section>
+    <h2>Project Overview</h2>
+
+    <div class="spec-box">
+      <h4>What to build</h4>
+      <p>A CLI app that lets you add, list, complete, and delete tasks. Tasks are persisted to a JSON file between runs.</p>
+    </div>
+
+    <div class="spec-box">
+      <h4>Inputs</h4>
+      <p>Command-line interaction (menu-driven) — user selects actions from a numbered menu.</p>
+    </div>
+
+    <div class="spec-box">
+      <h4>Outputs</h4>
+      <p><code>tasks.json</code> file for persistence, formatted task list in the terminal.</p>
+    </div>
+
+    <div class="spec-box">
+      <h4>Skills covered</h4>
+      <p>Functions (Day 3), data structures (Day 4), file I/O + JSON (Day 5), error handling + modules (Day 6).</p>
+    </div>
+
+    <div class="spec-box">
+      <h4>Stretch goal</h4>
+      <p>Add due dates with <code>datetime</code> and filter tasks by status (pending / done).</p>
+    </div>
+  </section>
+
+  <!-- ── ARCHITECTURE ── -->
+  <section>
+    <h2>Architecture and Design</h2>
+
+    <p>Before writing code, plan the structure. As a Java developer, you'd normally create a class hierarchy. For this project, we'll keep it functional (no classes yet — that's Day 8). Think of it as writing a Spring Boot service where every <code>@Service</code> method is a standalone function.</p>
+
+    <h3>File structure</h3>
+
+    <div class="shell-block">
+      <span class="block-label">Project layout</span>
+      <pre><code>task_manager/
+├── task_manager.py   ← main entry point (menu loop)
+├── storage.py        ← load/save tasks to JSON
+└── tasks.json        ← data file (created at runtime)</code></pre>
+    </div>
+
+    <h3>Task representation</h3>
+
+    <p>Each task is a dict with a unique ID, a title, a status, and a creation timestamp. In Java you'd make a <code>Task</code> class — here a dict suffices. (On Day 14 we'll refactor this to use a <code>@dataclass</code>.)</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — task shape</span>
+      <pre><code class="language-python"># Each task is a dict:
+{
+    "id": 1,
+    "title": "Buy groceries",
+    "done": False,
+    "created_at": "2024-03-15T10:30:00"
+}</code></pre>
+    </div>
+
+    <h3>Separation of concerns</h3>
+
+    <div class="callout callout-teal">
+      <strong>Design principle:</strong> Keep I/O (reading input, printing output, file access) separate from logic (finding tasks, toggling status). This mirrors the service/repository pattern you know from Spring. <code>storage.py</code> handles persistence; <code>task_manager.py</code> handles the user-facing logic and menu.
+    </div>
+  </section>
+
+  <!-- ── BUILDING: STORAGE ── -->
+  <section>
+    <h2>Step 1: The Storage Module</h2>
+
+    <p>Start with the persistence layer — loading and saving tasks to a JSON file. This module has no user interaction; it only reads and writes data.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — storage.py</span>
+      <pre><code class="language-python">"""
+storage.py — Load and save tasks to a JSON file.
+"""
+import json
+from pathlib import Path
+
+DEFAULT_FILE = Path("tasks.json")
+
+
+def load_tasks(path=DEFAULT_FILE):
+    """Load tasks from a JSON file. Return empty list if file doesn't exist."""
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+    except json.JSONDecodeError:
+        print(f"Warning: {path} contains invalid JSON. Starting fresh.")
+        return []
+
+
+def save_tasks(tasks, path=DEFAULT_FILE):
+    """Save the task list to a JSON file."""
+    with open(path, "w") as f:
+        json.dump(tasks, f, indent=2)
+
+
+def get_next_id(tasks):
+    """Return the next available task ID."""
+    if not tasks:
+        return 1
+    return max(task["id"] for task in tasks) + 1</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Java comparison:</strong> This module is like a Spring <code>@Repository</code> — it abstracts the data layer. <code>load_tasks()</code> ≈ <code>findAll()</code>, <code>save_tasks()</code> ≈ the underlying JPA flush, <code>get_next_id()</code> ≈ an auto-increment sequence.
+    </div>
+  </section>
+
+  <!-- ── BUILDING: MAIN ── -->
+  <section>
+    <h2>Step 2: The Main Application</h2>
+
+    <p>Now build the menu system and task operations. Each menu option maps to a function — like controller methods routing to service calls.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — task_manager.py</span>
+      <pre><code class="language-python">"""
+task_manager.py — CLI Task Manager.
+Run with: python task_manager.py
+"""
+from datetime import datetime
+from storage import load_tasks, save_tasks, get_next_id
+
+
+def display_menu():
+    """Print the main menu."""
+    print("\n╔══════════════════════════╗")
+    print("║    📋 Task Manager       ║")
+    print("╠══════════════════════════╣")
+    print("║  1. Add task             ║")
+    print("║  2. List tasks           ║")
+    print("║  3. Complete task        ║")
+    print("║  4. Delete task          ║")
+    print("║  5. Quit                 ║")
+    print("╚══════════════════════════╝")
+
+
+def add_task(tasks):
+    """Prompt user for a task title and add it to the list."""
+    title = input("Task title: ").strip()
+    if not title:
+        print("Error: Title cannot be empty.")
+        return
+
+    task = {
+        "id": get_next_id(tasks),
+        "title": title,
+        "done": False,
+        "created_at": datetime.now().isoformat(),
+    }
+    tasks.append(task)
+    save_tasks(tasks)
+    print(f"Added: '{title}' (ID: {task['id']})")
+
+
+def list_tasks(tasks):
+    """Display all tasks with their status."""
+    if not tasks:
+        print("No tasks yet. Add one with option 1.")
+        return
+
+    print(f"\n{'ID':<5} {'Status':<10} {'Title'}")
+    print("-" * 40)
+    for task in tasks:
+        status = "✓ Done" if task["done"] else "○ Pending"
+        print(f"{task['id']:<5} {status:<10} {task['title']}")
+    print(f"\nTotal: {len(tasks)} task(s)")
+
+
+def complete_task(tasks):
+    """Mark a task as complete by ID."""
+    list_tasks(tasks)
+    if not tasks:
+        return
+
+    try:
+        task_id = int(input("\nTask ID to complete: "))
+    except ValueError:
+        print("Error: Please enter a number.")
+        return
+
+    for task in tasks:
+        if task["id"] == task_id:
+            if task["done"]:
+                print(f"Task '{task['title']}' is already done.")
+            else:
+                task["done"] = True
+                save_tasks(tasks)
+                print(f"Completed: '{task['title']}'")
+            return
+
+    print(f"Error: No task with ID {task_id}.")
+
+
+def delete_task(tasks):
+    """Delete a task by ID."""
+    list_tasks(tasks)
+    if not tasks:
+        return
+
+    try:
+        task_id = int(input("\nTask ID to delete: "))
+    except ValueError:
+        print("Error: Please enter a number.")
+        return
+
+    for i, task in enumerate(tasks):
+        if task["id"] == task_id:
+            removed = tasks.pop(i)
+            save_tasks(tasks)
+            print(f"Deleted: '{removed['title']}'")
+            return
+
+    print(f"Error: No task with ID {task_id}.")
+
+
+def main():
+    """Main loop — load tasks, show menu, dispatch actions."""
+    tasks = load_tasks()
+    print("Loaded", len(tasks), "task(s).")
+
+    actions = {
+        "1": add_task,
+        "2": list_tasks,
+        "3": complete_task,
+        "4": delete_task,
+    }
+
+    while True:
+        display_menu()
+        choice = input("Choose (1-5): ").strip()
+
+        if choice == "5":
+            print("Goodbye!")
+            break
+
+        action = actions.get(choice)
+        if action:
+            action(tasks)
+        else:
+            print("Invalid choice. Please enter 1-5.")
+
+
+if __name__ == "__main__":
+    main()</code></pre>
+    </div>
+  </section>
+
+  <!-- ── KEY PATTERNS ── -->
+  <section>
+    <h2>Key Patterns Used</h2>
+
+    <p>This project applies specific patterns from each day. Here's where they show up:</p>
+
+    <h3>Dispatch dict (Day 3 — functions as first-class objects)</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Instead of a long if/elif chain:
+if choice == "1":
+    add_task(tasks)
+elif choice == "2":
+    list_tasks(tasks)
+# ... etc
+
+# We use a dispatch dict — cleaner and extensible:
+actions = {
+    "1": add_task,
+    "2": list_tasks,
+    "3": complete_task,
+    "4": delete_task,
+}
+action = actions.get(choice)
+if action:
+    action(tasks)</code></pre>
+    </div>
+
+    <h3>try/except for input validation (Day 6)</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Guard against non-numeric input
+try:
+    task_id = int(input("Task ID: "))
+except ValueError:
+    print("Error: Please enter a number.")
+    return
+
+# Guard against missing file (in storage.py)
+try:
+    with open(path) as f:
+        return json.load(f)
+except FileNotFoundError:
+    return []</code></pre>
+    </div>
+
+    <h3>enumerate for indexed iteration (Day 4)</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># enumerate gives us (index, item) — needed for pop(i)
+for i, task in enumerate(tasks):
+    if task["id"] == task_id:
+        removed = tasks.pop(i)    # remove by index
+        break</code></pre>
+    </div>
+
+    <h3>__name__ == '__main__' guard (Day 6)</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Allows importing task_manager functions without running the menu loop
+if __name__ == "__main__":
+    main()
+
+# Now you could do: from task_manager import add_task
+# without triggering the interactive menu</code></pre>
+    </div>
+  </section>
+
+  <!-- ── TESTING ── -->
+  <section>
+    <h2>Testing the App</h2>
+
+    <h3>Run it</h3>
+
+    <div class="shell-block">
+      <span class="block-label">Shell</span>
+      <pre><code>cd task_manager/
+python task_manager.py</code></pre>
+    </div>
+
+    <h3>Manual testing scenarios</h3>
+
+    <div class="callout callout-teal">
+      <strong>Test these scenarios in order:</strong>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Test checklist</span>
+      <pre><code class="language-python"># 1. First run — no tasks.json exists
+#    → Should print "Loaded 0 task(s)." and create file on first add
+
+# 2. Add 3 tasks
+#    → Each should get a unique, increasing ID
+#    → tasks.json should contain all 3
+
+# 3. List tasks
+#    → All 3 shown with "○ Pending" status
+
+# 4. Complete task (valid ID)
+#    → Status changes to "✓ Done"
+#    → Persisted to tasks.json
+
+# 5. Complete already-done task
+#    → Should say "already done" (not toggle back)
+
+# 6. Complete with invalid ID
+#    → Should print error, not crash
+
+# 7. Complete with non-numeric input
+#    → Should print error, not crash
+
+# 8. Delete a task
+#    → Task removed from list and file
+
+# 9. Quit and restart
+#    → Tasks should still be there (loaded from JSON)
+
+# 10. Delete tasks.json manually, restart
+#     → Should start with empty list, no crash</code></pre>
+    </div>
+
+    <h3>Sample session</h3>
+
+    <div class="shell-block">
+      <span class="block-label">Terminal output</span>
+      <pre><code>$ python task_manager.py
+Loaded 0 task(s).
+
+╔══════════════════════════╗
+║    📋 Task Manager       ║
+╠══════════════════════════╣
+║  1. Add task             ║
+║  2. List tasks           ║
+║  3. Complete task        ║
+║  4. Delete task          ║
+║  5. Quit                 ║
+╚══════════════════════════╝
+Choose (1-5): 1
+Task title: Buy groceries
+Added: 'Buy groceries' (ID: 1)
+
+Choose (1-5): 1
+Task title: Write Python guide
+Added: 'Write Python guide' (ID: 2)
+
+Choose (1-5): 2
+
+ID    Status     Title
+----------------------------------------
+1     ○ Pending  Buy groceries
+2     ○ Pending  Write Python guide
+
+Total: 2 task(s)
+
+Choose (1-5): 3
+ID    Status     Title
+----------------------------------------
+1     ○ Pending  Buy groceries
+2     ○ Pending  Write Python guide
+
+Task ID to complete: 1
+Completed: 'Buy groceries'
+
+Choose (1-5): 5
+Goodbye!</code></pre>
+    </div>
+  </section>
+
+  <!-- ── QUICK REFERENCE ── -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">JSON persistence</div>
+        <code>json.load(f)</code> — file → Python<br>
+        <code>json.dump(data, f, indent=2)</code> — Python → file<br>
+        <code>json.loads(s)</code> / <code>json.dumps(obj)</code> — strings
+        <p>indent=2 makes the file human-readable</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Dispatch pattern</div>
+        <code>actions = {"1": func1, ...}</code><br>
+        <code>action = actions.get(choice)</code><br>
+        <code>if action: action(args)</code>
+        <p>Replaces long if/elif chains</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Input validation</div>
+        <code>try:</code><br>
+        <code>&nbsp;&nbsp;n = int(input("ID: "))</code><br>
+        <code>except ValueError:</code><br>
+        <code>&nbsp;&nbsp;print("Not a number")</code>
+        <p>Always wrap int(input()) in try/except</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Finding in a list</div>
+        <code>for item in items:</code><br>
+        <code>&nbsp;&nbsp;if item["id"] == target:</code><br>
+        <code>&nbsp;&nbsp;&nbsp;&nbsp;# found it</code>
+        <p>Like Java's stream().filter().findFirst()</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Removing by index</div>
+        <code>for i, item in enumerate(items):</code><br>
+        <code>&nbsp;&nbsp;if match:</code><br>
+        <code>&nbsp;&nbsp;&nbsp;&nbsp;items.pop(i)</code><br>
+        <code>&nbsp;&nbsp;&nbsp;&nbsp;break</code>
+        <p>Use enumerate when you need the index</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Module import</div>
+        <code>from storage import load_tasks</code><br>
+        <code>if __name__ == "__main__":</code><br>
+        <code>&nbsp;&nbsp;main()</code>
+        <p>Split code into modules early</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── WRAP-UP ── -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>You built a working CLI app with persistent storage in about 100 lines of Python. The equivalent Java version would be significantly more boilerplate (POJOs, builders, try-with-resources, Jackson config).</li>
+      <li>The dispatch dict pattern (<code>actions = {"1": func}</code>) replaces verbose if/elif chains. Functions as first-class objects make this natural in Python.</li>
+      <li>Separating storage from application logic (even without classes) keeps the code clean and testable. <code>storage.py</code> could be swapped for a database layer later.</li>
+      <li>Defensive coding with <code>try/except</code> around user input prevents crashes. The app gracefully handles missing files, invalid input, and edge cases.</li>
+      <li>The <code>__name__</code> guard lets your module be both a standalone script and an importable library — a pattern you'll use in every Python project.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Stretch goals to try</h4>
+      <ul>
+        <li>Add a due date field using <code>datetime</code> — prompt for it when adding, display "overdue" for past dates</li>
+        <li>Add a "filter" option: show only pending tasks, only completed tasks, or all</li>
+        <li>Add task priority (high/medium/low) and sort the list by priority</li>
+        <li>Add an "edit task" option that lets you update the title</li>
+        <li>Add color to the output using ANSI escape codes (e.g., green for done, red for overdue)</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 8: OOP: Classes + Inheritance</strong><br>
+      You'll learn Python's class system — <code>__init__</code>, <code>self</code>, inheritance, and <code>super()</code>. On Day 14, you'll refactor this task manager to use <code>@dataclass</code>, a <code>TaskManager</code> class, and decorators. The contrast between today's functional approach and the OOP version will crystallize when to use each style.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day6.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day8.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 7;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

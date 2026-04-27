@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 2 — Control Flow + Comprehensions | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 2 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 02</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Control Flow + Comprehensions</h1>
+  <p>Python's if/elif/else, for loops over anything, while loops with their unique else clause, and list comprehensions — the idiom that replaces 90% of Java's for-loop-plus-add patterns.</p>
+</div>
+
+<main>
+
+  <!-- ── PLAN ── -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><span class="topic">if / elif / else — Python's conditional syntax</span><span class="time">~8 min</span></li>
+        <li><span class="topic">match/case — Python 3.10 pattern matching (like switch)</span><span class="time">~8 min</span></li>
+        <li><span class="topic">for loops — iterating over sequences without index juggling</span><span class="time">~10 min</span></li>
+        <li><span class="topic">while, break, continue, and loop else (yes, loops have else)</span><span class="time">~8 min</span></li>
+        <li><span class="topic">List comprehensions — the key Python idiom</span><span class="time">~12 min</span></li>
+        <li><span class="topic">Dict and set comprehensions</span><span class="time">~8 min</span></li>
+        <li><span class="topic">Ternary expression</span><span class="time">~6 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels at a glance</h4>
+      <ul>
+        <li>Python uses indentation (4 spaces) to define blocks — no curly braces</li>
+        <li><code>elif</code> ≈ Java's <code>else if</code></li>
+        <li><code>match</code>/<code>case</code> ≈ Java's <code>switch</code> expression (but much more powerful)</li>
+        <li>Python's <code>for x in collection</code> ≈ Java's enhanced for-each</li>
+        <li>List comprehensions ≈ Java streams: <code>list.stream().filter(...).map(...).collect(...)</code> — but terser</li>
+        <li>Ternary: <code>x if cond else y</code> ≈ Java's <code>cond ? x : y</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── IF/ELIF/ELSE ── -->
+  <section>
+    <h2>1. if / elif / else</h2>
+
+    <p>Python uses <strong>indentation</strong> to define blocks — not curly braces. The standard is 4 spaces. This is enforced by the language, not just style.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">int score = 85;
+
+if (score >= 90) {
+    System.out.println("A");
+} else if (score >= 80) {
+    System.out.println("B");
+} else if (score >= 70) {
+    System.out.println("C");
+} else {
+    System.out.println("F");
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">score = 85
+
+if score >= 90:
+    print("A")
+elif score >= 80:
+    print("B")
+elif score >= 70:
+    print("C")
+else:
+    print("F")</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>The colon matters:</strong> Every <code>if</code>, <code>elif</code>, <code>else</code>, <code>for</code>, <code>while</code>, <code>def</code>, and <code>class</code> header ends with a colon. Forgetting it is the #1 syntax error for newcomers.
+    </div>
+
+    <h3>Comparison and logical operators</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">x == y    // equality
+x != y    // not equal
+x && y    // logical AND
+x || y    // logical OR
+!x        // logical NOT
+
+// Checking multiple conditions
+if (x > 0 && x < 10) { }</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">x == y    # equality
+x != y    # not equal
+x and y   # logical AND (spelled out)
+x or y    # logical OR  (spelled out)
+not x     # logical NOT (spelled out)
+
+# Chained comparisons — no Java equivalent
+if 0 < x < 10:      # reads like math
+    pass
+
+# Same as: if x > 0 and x < 10
+# but more Pythonic</code></pre>
+      </div>
+    </div>
+
+    <h3>Membership and identity operators</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">fruits = ["apple", "banana", "cherry"]
+
+# 'in' operator — like Java's .contains()
+if "apple" in fruits:
+    print("found it")
+
+if "mango" not in fruits:
+    print("not in list")
+
+# 'is' — identity (same object in memory)
+# Use for None checks, NOT for value equality
+x = None
+if x is None:       # correct
+    pass
+if x is not None:   # correct
+    pass
+
+# Don't use 'is' for int/str comparisons
+# (works by coincidence for small ints due to caching)
+a = 1000
+b = 1000
+a == b   # True  (value equality — use this)
+a is b   # False (different objects in memory)</code></pre>
+    </div>
+
+    <h3>match / case (Python 3.10+)</h3>
+    <p>Python didn't have a switch statement until 3.10, when <code>match</code>/<code>case</code> was introduced. It's more powerful than Java's switch — it supports structural pattern matching.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java switch expression</span>
+        <pre><code class="language-java">String day = "MON";
+
+String type = switch (day) {
+    case "MON", "TUE", "WED",
+         "THU", "FRI" -> "Weekday";
+    case "SAT", "SUN" -> "Weekend";
+    default -> "Unknown";
+};</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python match/case</span>
+        <pre><code class="language-python">day = "MON"
+
+match day:
+    case "MON" | "TUE" | "WED" | "THU" | "FRI":
+        result = "Weekday"
+    case "SAT" | "SUN":
+        result = "Weekend"
+    case _:          # _ is the wildcard (like default)
+        result = "Unknown"</code></pre>
+      </div>
+    </div>
+
+    <div class="callout callout-teal">
+      <strong>match/case goes much further:</strong> It can destructure dicts, lists, and dataclasses — like Kotlin's <code>when</code> or Rust's <code>match</code>. You'll see this in depth on Day 13 with dataclasses.
+    </div>
+  </section>
+
+  <!-- ── FOR LOOPS ── -->
+  <section>
+    <h2>2. for Loops</h2>
+
+    <p>Python's <code>for</code> loop iterates directly over items — not over an index counter. This eliminates the classic Java <code>for (int i = 0; i &lt; list.size(); i++)</code> pattern.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">List&lt;String&gt; names = List.of("Alice","Bob","Carol");
+
+// Enhanced for-each
+for (String name : names) {
+    System.out.println(name);
+}
+
+// Need index? Old style:
+for (int i = 0; i < names.size(); i++) {
+    System.out.println(i + ": " + names.get(i));
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">names = ["Alice", "Bob", "Carol"]
+
+# Basic iteration
+for name in names:
+    print(name)
+
+# Need index? Use enumerate()
+for i, name in enumerate(names):
+    print(f"{i}: {name}")
+
+# enumerate starts at 0 by default
+# start at 1:
+for i, name in enumerate(names, start=1):
+    print(f"{i}: {name}")</code></pre>
+      </div>
+    </div>
+
+    <h3>range() — like Java's index-based for loop</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">for (int i = 0; i < 5; i++) { }
+for (int i = 0; i < 10; i += 2) { }
+for (int i = 10; i > 0; i--) { }</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">for i in range(5):       # 0, 1, 2, 3, 4
+    pass
+
+for i in range(0, 10, 2):   # 0, 2, 4, 6, 8 (step)
+    pass
+
+for i in range(10, 0, -1):  # 10, 9, ..., 1 (reverse)
+    pass
+
+# range is lazy — no list created in memory
+# for large loops this matters</code></pre>
+      </div>
+    </div>
+
+    <h3>zip() — iterate two collections in parallel</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">List&lt;String&gt; names = List.of("Alice", "Bob");
+List&lt;Integer&gt; scores = List.of(95, 82);
+
+for (int i = 0; i < names.size(); i++) {
+    System.out.println(
+        names.get(i) + ": " + scores.get(i));
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">names = ["Alice", "Bob"]
+scores = [95, 82]
+
+# zip pairs them up
+for name, score in zip(names, scores):
+    print(f"{name}: {score}")
+
+# zip stops at shortest list
+# Use itertools.zip_longest to pad instead</code></pre>
+      </div>
+    </div>
+
+    <h3>Iterating over dicts</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">config = {"host": "localhost", "port": 5432, "db": "mydb"}
+
+# Just keys (default)
+for key in config:
+    print(key)
+
+# Keys explicitly
+for key in config.keys():
+    print(key)
+
+# Values
+for value in config.values():
+    print(value)
+
+# Both — like Java's entrySet()
+for key, value in config.items():
+    print(f"{key} = {value}")</code></pre>
+    </div>
+  </section>
+
+  <!-- ── WHILE ── -->
+  <section>
+    <h2>3. while, break, continue, and Loop else</h2>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">int n = 10;
+while (n > 0) {
+    System.out.println(n);
+    n--;
+}
+
+// break and continue work the same
+for (int i = 0; i < 10; i++) {
+    if (i == 3) continue;
+    if (i == 7) break;
+    System.out.println(i);
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">n = 10
+while n > 0:
+    print(n)
+    n -= 1    # no -- operator in Python
+
+# break and continue work the same
+for i in range(10):
+    if i == 3:
+        continue    # skip 3
+    if i == 7:
+        break       # stop at 7
+    print(i)</code></pre>
+      </div>
+    </div>
+
+    <h3>Loop else — Python's unique feature</h3>
+
+    <p>Both <code>for</code> and <code>while</code> loops can have an <code>else</code> block. The <code>else</code> runs if the loop completed without hitting a <code>break</code>. This is genuinely useful for search patterns.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — search pattern</span>
+        <pre><code class="language-java">List&lt;Integer&gt; nums = List.of(1, 3, 5, 7);
+boolean found = false;
+
+for (int n : nums) {
+    if (n % 2 == 0) {
+        System.out.println("Found even: " + n);
+        found = true;
+        break;
+    }
+}
+
+if (!found) {
+    System.out.println("No evens found");
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — loop else</span>
+        <pre><code class="language-python">nums = [1, 3, 5, 7]
+
+for n in nums:
+    if n % 2 == 0:
+        print(f"Found even: {n}")
+        break
+else:
+    # Runs only if loop ended WITHOUT break
+    print("No evens found")
+
+# No flag variable needed!</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>When to use loop else:</strong> Whenever you'd normally use a boolean flag variable like <code>found = False</code> to track whether a loop found what it was looking for. The <code>else</code> replaces the flag entirely.
+    </div>
+  </section>
+
+  <!-- ── LIST COMPREHENSIONS ── -->
+  <section>
+    <h2>4. List Comprehensions</h2>
+
+    <p>List comprehensions are the most important Python idiom to internalize as a Java developer. They replace the common pattern of creating an empty list, looping, and conditionally appending.</p>
+
+    <h3>Basic syntax</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — stream equivalent</span>
+        <pre><code class="language-java">List&lt;Integer&gt; nums = List.of(1,2,3,4,5);
+
+// Map: square each number
+List&lt;Integer&gt; squares = nums.stream()
+    .map(n -> n * n)
+    .collect(Collectors.toList());
+
+// Filter: keep evens only
+List&lt;Integer&gt; evens = nums.stream()
+    .filter(n -> n % 2 == 0)
+    .collect(Collectors.toList());
+
+// Map + Filter
+List&lt;Integer&gt; evenSquares = nums.stream()
+    .filter(n -> n % 2 == 0)
+    .map(n -> n * n)
+    .collect(Collectors.toList());</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — list comprehensions</span>
+        <pre><code class="language-python">nums = [1, 2, 3, 4, 5]
+
+# Map: [expression for item in iterable]
+squares = [n * n for n in nums]
+# [1, 4, 9, 16, 25]
+
+# Filter: [expression for item in iterable if condition]
+evens = [n for n in nums if n % 2 == 0]
+# [2, 4]
+
+# Map + Filter combined
+even_squares = [n * n for n in nums if n % 2 == 0]
+# [4, 16]</code></pre>
+      </div>
+    </div>
+
+    <h3>Real-world examples</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">names = ["  alice  ", "BOB", "  Carol"]
+
+# Clean and normalize a list of names
+clean = [name.strip().title() for name in names]
+# ["Alice", "Bob", "Carol"]
+
+# Extract a field from a list of dicts
+users = [
+    {"name": "Alice", "age": 30, "active": True},
+    {"name": "Bob",   "age": 25, "active": False},
+    {"name": "Carol", "age": 35, "active": True},
+]
+
+# Get names of active users
+active_names = [u["name"] for u in users if u["active"]]
+# ["Alice", "Carol"]
+
+# Transform: get (name, age) tuples
+name_ages = [(u["name"], u["age"]) for u in users]
+# [("Alice", 30), ("Bob", 25), ("Carol", 35)]
+
+# Flatten a nested list
+matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+flat = [x for row in matrix for x in row]
+# [1, 2, 3, 4, 5, 6, 7, 8, 9]</code></pre>
+    </div>
+
+    <div class="callout callout-teal">
+      <strong>Performance note:</strong> List comprehensions are faster than equivalent for-loop-plus-append in Python because the interpreter can optimize them. They're also more readable once you get used to the syntax. Prefer them over <code>list(map(...))</code> or <code>list(filter(...))</code> in most cases.
+    </div>
+
+    <h3>Nested list comprehensions</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Multiplication table: 3x3
+table = [[i * j for j in range(1, 4)] for i in range(1, 4)]
+# [[1, 2, 3], [2, 4, 6], [3, 6, 9]]
+
+# When it gets complex, a regular for loop is clearer
+# Don't sacrifice readability for terseness</code></pre>
+    </div>
+  </section>
+
+  <!-- ── DICT AND SET COMPREHENSIONS ── -->
+  <section>
+    <h2>5. Dict and Set Comprehensions</h2>
+
+    <p>The comprehension syntax works for dicts and sets too.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — dict comprehension</span>
+      <pre><code class="language-python">names = ["Alice", "Bob", "Carol"]
+scores = [95, 82, 91]
+
+# Build a dict from two lists
+score_map = {name: score for name, score in zip(names, scores)}
+# {"Alice": 95, "Bob": 82, "Carol": 91}
+
+# Invert a dict (swap keys and values)
+original = {"a": 1, "b": 2, "c": 3}
+inverted = {v: k for k, v in original.items()}
+# {1: "a", 2: "b", 3: "c"}
+
+# Filter a dict — keep entries where score > 85
+high_scorers = {k: v for k, v in score_map.items() if v > 85}
+# {"Alice": 95, "Carol": 91}
+
+# Transform values
+uppercased = {k.upper(): v for k, v in original.items()}
+# {"A": 1, "B": 2, "C": 3}</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — set comprehension</span>
+      <pre><code class="language-python">words = ["apple", "banana", "avocado", "blueberry", "cherry"]
+
+# Unique first letters
+first_letters = {w[0] for w in words}
+# {'a', 'b', 'c'}  — order not guaranteed (it's a set)
+
+# Long words (deduped automatically)
+long_words = {w for w in words if len(w) > 6}
+# {'avocado', 'blueberry', 'banana', 'cherry'}</code></pre>
+    </div>
+  </section>
+
+  <!-- ── TERNARY ── -->
+  <section>
+    <h2>6. Ternary Expression</h2>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">int age = 20;
+
+// Ternary: condition ? value_if_true : value_if_false
+String label = age >= 18 ? "adult" : "minor";
+
+// Null coalescing (Java 8+)
+String name = getName(); // might be null
+String display = name != null ? name : "Anonymous";</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">age = 20
+
+# Ternary: value_if_true if condition else value_if_false
+label = "adult" if age >= 18 else "minor"
+
+# "or" as null coalescing (for falsy values)
+name = get_name()  # might return None or ""
+display = name or "Anonymous"
+
+# Careful: 'or' triggers on any falsy value (0, "", [], None)
+# For strict None-only check, use:
+display = name if name is not None else "Anonymous"</code></pre>
+      </div>
+    </div>
+
+    <h3>Putting it all together</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python — real example</span>
+      <pre><code class="language-python">students = [
+    {"name": "Alice", "grade": 92, "active": True},
+    {"name": "Bob",   "grade": 74, "active": True},
+    {"name": "Carol", "grade": 88, "active": False},
+    {"name": "Dave",  "grade": 55, "active": True},
+]
+
+# Get letter grades for active students, sorted by name
+results = [
+    {
+        "name": s["name"],
+        "letter": (
+            "A" if s["grade"] >= 90 else
+            "B" if s["grade"] >= 80 else
+            "C" if s["grade"] >= 70 else
+            "F"
+        )
+    }
+    for s in students
+    if s["active"]
+]
+
+for r in results:
+    print(f"{r['name']}: {r['letter']}")</code></pre>
+    </div>
+  </section>
+
+  <!-- ── QUICK REFERENCE ── -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Conditionals</div>
+        <code>if x:</code> / <code>elif y:</code> / <code>else:</code><br>
+        <code>and</code>, <code>or</code>, <code>not</code> (spelled out)<br>
+        <code>0 &lt; x &lt; 10</code> — chained comparison
+        <p>Always ends with colon; blocks via indentation</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">match/case</div>
+        <code>match val:</code><br>
+        <code>&nbsp;&nbsp;case "a" | "b":</code><br>
+        <code>&nbsp;&nbsp;case _:</code> — wildcard/default
+        <p>Python 3.10+; like switch but with pattern matching</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">for loops</div>
+        <code>for x in iterable:</code><br>
+        <code>for i in range(n):</code><br>
+        <code>for i, x in enumerate(xs):</code><br>
+        <code>for a, b in zip(xs, ys):</code>
+        <p>No index-based C-style for loop needed</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">while + loop else</div>
+        <code>while condition:</code><br>
+        <code>break</code> — exit loop<br>
+        <code>continue</code> — skip iteration<br>
+        <code>else:</code> — runs if no break
+        <p>else replaces a found-flag variable</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">List comprehension</div>
+        <code>[expr for x in xs]</code> — map<br>
+        <code>[expr for x in xs if cond]</code> — filter+map<br>
+        <code>[x for row in matrix for x in row]</code> — flatten
+        <p>Replaces Java's stream().filter().map().collect()</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Dict comprehension</div>
+        <code>{k: v for k, v in items()}</code><br>
+        <code>{k: v for k, v in d.items() if cond}</code><br>
+        <code>{v: k for k, v in d.items()}</code> — invert
+        <p>Build or transform dicts in one expression</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Set comprehension</div>
+        <code>{expr for x in xs}</code><br>
+        <code>{expr for x in xs if cond}</code>
+        <p>Use <code>{}</code> — but empty set is <code>set()</code> not <code>{}</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Ternary</div>
+        <code>a if condition else b</code><br>
+        <code>name or "default"</code> — falsy fallback<br>
+        <code>x if x is not None else default</code> — strict
+        <p>Reads left-to-right: value, condition, fallback</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Membership</div>
+        <code>x in collection</code> — like .contains()<br>
+        <code>x not in collection</code><br>
+        <code>x is None</code> / <code>x is not None</code>
+        <p>Use <code>is</code>/<code>is not</code> for None; <code>==</code> for values</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── WRAP-UP ── -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Python uses indentation (4 spaces) to define blocks — no curly braces. The colon ends every block header.</li>
+      <li><code>and</code>, <code>or</code>, <code>not</code> are words, not symbols. Chained comparisons like <code>0 &lt; x &lt; 10</code> work natively.</li>
+      <li>Python's <code>for</code> iterates directly over items. Use <code>enumerate()</code> for index+item, <code>zip()</code> for parallel iteration.</li>
+      <li>Loop <code>else</code> runs when a loop finishes without a <code>break</code> — useful for search patterns without a flag variable.</li>
+      <li>List comprehensions replace Java's for-loop-plus-add and most stream operations. Learn the syntax: <code>[expr for x in xs if cond]</code>.</li>
+      <li>Dict and set comprehensions work the same way — build any collection in one readable expression.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 3</h4>
+      <ul>
+        <li>Given <code>numbers = [1..20]</code>, use a list comprehension to get all numbers divisible by 3 but not 9</li>
+        <li>Build a dict mapping word → word length for a list of strings using a dict comprehension</li>
+        <li>Use <code>enumerate()</code> and <code>zip()</code> in two separate for loops</li>
+        <li>Rewrite a Java-style for-loop-plus-append as a list comprehension</li>
+        <li>Try loop else: iterate a list looking for a target, print "not found" in the else block</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 3: Functions</strong><br>
+      Python functions are first-class objects. You'll learn default parameters, <code>*args</code>, <code>**kwargs</code>, returning multiple values, lambdas, and get a first look at decorators — a feature that has no direct Java equivalent but is everywhere in Python frameworks.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day1.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day3.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 2;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

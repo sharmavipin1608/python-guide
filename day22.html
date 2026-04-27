@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 22 — asyncio Basics | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 22 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 22</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>asyncio Basics</h1>
+  <p>Async lets you handle thousands of I/O operations concurrently on a single thread — no GIL concerns, no thread overhead. One event loop, many suspended coroutines, blazing throughput.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>Why async exists — I/O-bound concurrency without threads</li>
+        <li><code>async def</code> and <code>await</code> — the two new keywords</li>
+        <li><code>asyncio.run()</code> — the entry point</li>
+        <li>Coroutines vs regular functions — what's actually different</li>
+        <li><code>asyncio.sleep()</code> vs <code>time.sleep()</code> — the critical difference</li>
+        <li><code>asyncio.gather()</code> — run multiple coroutines concurrently</li>
+        <li><code>asyncio.create_task()</code> — fire-and-forget background tasks</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>async def</code> → method returning <code>CompletableFuture</code></li>
+        <li><code>await</code> → <code>.get()</code> or <code>.join()</code> on a <code>CompletableFuture</code></li>
+        <li><code>asyncio.gather()</code> → <code>CompletableFuture.allOf()</code></li>
+        <li><code>asyncio.create_task()</code> → <code>CompletableFuture.runAsync()</code></li>
+        <li>Event loop → <code>ExecutorService</code> that drives async completion</li>
+        <li><code>asyncio.sleep(n)</code> → <code>CompletableFuture.delayedExecutor(n, SECONDS)</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why Async?</h2>
+
+    <p>When your program makes a network request or reads a file, it spends most of the time <em>waiting</em> — the CPU sits idle. Threads solve this by switching threads while one waits. Async solves it better: one thread runs an event loop that juggles many suspended operations without thread-switching overhead.</p>
+
+    <div class="diagram-box">
+      <span class="teal">Thread model:</span> 1 thread per request → 1000 requests = 1000 threads (expensive)<br>
+      <span class="teal">Async model: &nbsp;</span> 1 event loop → 1000 requests = 1000 suspended coroutines (cheap)<br>
+      <br>
+      <span class="highlight">Coroutine A</span> sends HTTP request → <span class="teal">suspends (await)</span> → event loop runs B and C<br>
+      <span class="highlight">Coroutine B</span> reads file →  <span class="teal">suspends (await)</span> → event loop runs A's response handler<br>
+      <span class="highlight">Coroutine C</span> queries DB →  <span class="teal">suspends (await)</span> → all make progress concurrently
+    </div>
+  </section>
+
+  <section>
+    <h2>async def and await</h2>
+
+    <h3>Coroutines — functions that can pause</h3>
+    <p>A function with <code>async def</code> is a <em>coroutine function</em>. Calling it returns a coroutine object — it doesn't execute the body yet, just like calling a generator function returns a generator. You need to <code>await</code> it or run it with <code>asyncio.run()</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — CompletableFuture</span>
+        <pre><code class="language-java">CompletableFuture&lt;String&gt; fetchAsync(String url) {
+    return CompletableFuture.supplyAsync(() -> {
+        // blocking call runs in ForkJoinPool thread
+        return http.get(url);
+    });
+}
+
+CompletableFuture&lt;String&gt; result = fetchAsync(url);
+String data = result.get(); // blocks</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import asyncio
+
+# async def makes this a coroutine function
+async def fetch(url: str) -> str:
+    # await suspends THIS coroutine, letting others run
+    await asyncio.sleep(1)   # simulate network delay
+    return f"data from {url}"
+
+# Calling fetch() does NOT run it — returns a coroutine object
+coro = fetch("https://example.com")
+print(type(coro))   # &lt;class 'coroutine'&gt;
+
+# asyncio.run() creates an event loop and runs the coroutine
+result = asyncio.run(fetch("https://example.com"))
+print(result)   # "data from https://example.com"
+
+# You can only await inside an async function
+async def main():
+    result = await fetch("https://example.com")
+    print(result)
+
+asyncio.run(main())</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Async is infectious.</strong> Once you <code>await</code> something, your function must be <code>async def</code>. And the caller of your <code>async def</code> must also <code>await</code> it, so it must also be <code>async def</code>. This bubbles all the way up to <code>asyncio.run()</code> at the top level.
+    </div>
+
+    <h3>asyncio.sleep() vs time.sleep()</h3>
+    <p>This is the most important gotcha. <code>time.sleep()</code> blocks the entire thread — the event loop freezes and nothing else can run. <code>asyncio.sleep()</code> suspends the current coroutine and yields control back to the event loop.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+import time
+
+# WRONG: time.sleep blocks the entire event loop
+async def bad_worker(name: str, delay: float):
+    print(f"{name} starting")
+    time.sleep(delay)     # blocks — no other coroutine runs!
+    print(f"{name} done")
+
+# CORRECT: asyncio.sleep suspends just this coroutine
+async def good_worker(name: str, delay: float):
+    print(f"{name} starting")
+    await asyncio.sleep(delay)   # suspends, event loop runs others
+    print(f"{name} done")
+
+async def main():
+    start = time.perf_counter()
+    # These appear to run sequentially with time.sleep:
+    # await asyncio.gather(bad_worker("A", 1), bad_worker("B", 1))
+
+    # These run concurrently with asyncio.sleep:
+    await asyncio.gather(
+        good_worker("A", 1.0),
+        good_worker("B", 1.0),
+        good_worker("C", 1.0),
+    )
+    print(f"Total: {time.perf_counter() - start:.2f}s")  # ~1.0s not 3.0s
+
+asyncio.run(main())</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>asyncio.gather() and create_task()</h2>
+
+    <h3>gather — run coroutines concurrently</h3>
+    <p><code>asyncio.gather()</code> schedules multiple coroutines to run concurrently and waits for all of them. It returns a list of results in the same order as the input coroutines.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">CompletableFuture&lt;String&gt; f1 = fetchAsync(url1);
+CompletableFuture&lt;String&gt; f2 = fetchAsync(url2);
+CompletableFuture&lt;String&gt; f3 = fetchAsync(url3);
+
+CompletableFuture.allOf(f1, f2, f3).join();
+String r1 = f1.get(), r2 = f2.get(), r3 = f3.get();</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import asyncio
+import httpx
+
+async def fetch(client: httpx.AsyncClient, url: str) -> dict:
+    resp = await client.get(url)
+    resp.raise_for_status()
+    return resp.json()
+
+async def main():
+    urls = [
+        "https://jsonplaceholder.typicode.com/posts/1",
+        "https://jsonplaceholder.typicode.com/posts/2",
+        "https://jsonplaceholder.typicode.com/posts/3",
+    ]
+
+    async with httpx.AsyncClient() as client:
+        # gather runs all three concurrently
+        results = await asyncio.gather(
+            *[fetch(client, url) for url in urls]
+        )
+
+    for r in results:
+        print(r["title"])
+
+asyncio.run(main())</code></pre>
+      </div>
+    </div>
+
+    <h3>Error handling in gather</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+
+async def might_fail(n: int) -> int:
+    await asyncio.sleep(0.1)
+    if n == 2:
+        raise ValueError(f"Task {n} failed!")
+    return n * 10
+
+async def main():
+    # Default: first exception cancels remaining and re-raises
+    try:
+        results = await asyncio.gather(
+            might_fail(1),
+            might_fail(2),   # raises
+            might_fail(3),
+        )
+    except ValueError as e:
+        print(f"One task failed: {e}")
+
+    # return_exceptions=True — collect all results, exceptions included
+    results = await asyncio.gather(
+        might_fail(1),
+        might_fail(2),
+        might_fail(3),
+        return_exceptions=True,
+    )
+    for i, r in enumerate(results):
+        if isinstance(r, Exception):
+            print(f"Task {i+1} failed: {r}")
+        else:
+            print(f"Task {i+1} succeeded: {r}")
+
+asyncio.run(main())</code></pre>
+    </div>
+
+    <h3>create_task() — fire-and-forget</h3>
+    <p><code>create_task()</code> schedules a coroutine immediately without waiting for it. Use it when you want to start background work and continue doing other things — the event loop will run the task alongside your current coroutine.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+
+async def background_job(name: str) -> None:
+    print(f"[bg] {name} started")
+    await asyncio.sleep(2)
+    print(f"[bg] {name} finished")
+
+async def main():
+    # Start background task — doesn't block
+    task = asyncio.create_task(background_job("cleanup"))
+
+    # Continue doing other work
+    print("Doing main work...")
+    await asyncio.sleep(1)
+    print("Main work done.")
+
+    # Wait for the background task to finish
+    await task   # or just let the event loop clean up
+
+asyncio.run(main())
+# Output:
+# [bg] cleanup started
+# Doing main work...
+# Main work done.
+# [bg] cleanup finished</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Practical: Async HTTP with httpx</h2>
+
+    <h3>Sequential vs concurrent fetching</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+import httpx
+import time
+
+URLS = [f"https://jsonplaceholder.typicode.com/posts/{i}" for i in range(1, 11)]
+
+async def fetch_one(client: httpx.AsyncClient, url: str) -> dict:
+    resp = await client.get(url, timeout=10.0)
+    resp.raise_for_status()
+    return {"url": url, "title": resp.json()["title"]}
+
+async def fetch_sequential() -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        results = []
+        for url in URLS:
+            results.append(await fetch_one(client, url))
+        return results
+
+async def fetch_concurrent() -> list[dict]:
+    async with httpx.AsyncClient() as client:
+        return await asyncio.gather(
+            *[fetch_one(client, url) for url in URLS]
+        )
+
+async def main():
+    start = time.perf_counter()
+    seq = await fetch_sequential()
+    print(f"Sequential: {time.perf_counter() - start:.2f}s ({len(seq)} posts)")
+
+    start = time.perf_counter()
+    con = await fetch_concurrent()
+    print(f"Concurrent: {time.perf_counter() - start:.2f}s ({len(con)} posts)")
+    # Concurrent is ~10x faster — all 10 requests in-flight at once
+
+asyncio.run(main())</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Install httpx:</strong> <code>pip install httpx</code>. Use <code>httpx.AsyncClient</code> — not <code>requests</code> — for async code. <code>requests</code> is synchronous only and will block the event loop.
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Define coroutine</div>
+        <code>async def fn(): await something()</code>
+        <p>Any function with <code>async def</code>. Must be awaited or run with <code>asyncio.run()</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Entry point</div>
+        <code>asyncio.run(main())</code>
+        <p>Creates an event loop, runs the coroutine, closes the loop. Call once at top level.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Concurrent execution</div>
+        <code>results = await asyncio.gather(coro1(), coro2(), coro3())</code>
+        <p>Runs all concurrently, returns list of results in order.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Background task</div>
+        <code>task = asyncio.create_task(coro())</code>
+        <p>Schedules immediately, doesn't block. Await later to get result/exceptions.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Non-blocking sleep</div>
+        <code>await asyncio.sleep(1.0)</code>
+        <p>Suspends current coroutine. Never use <code>time.sleep()</code> in async code.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Suppress exceptions in gather</div>
+        <code>await asyncio.gather(*coros, return_exceptions=True)</code>
+        <p>Exceptions are returned as values instead of raised. Check with <code>isinstance(r, Exception)</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Async HTTP</div>
+        <code>async with httpx.AsyncClient() as c: await c.get(url)</code>
+        <p>Use <code>httpx.AsyncClient</code>, not <code>requests</code>, inside async code.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Async context manager</div>
+        <code>async with resource() as r: ...</code>
+        <p>Like <code>with</code> but calls <code>__aenter__</code>/<code>__aexit__</code> — used by <code>httpx.AsyncClient</code>, DB connections, etc.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>async def</code> defines a coroutine function. Calling it returns a coroutine object — the body doesn't run until you <code>await</code> it or schedule it with <code>asyncio.run()</code> / <code>create_task()</code>.</li>
+      <li>Never use <code>time.sleep()</code> inside async code — it blocks the entire event loop, defeating the purpose. Always use <code>await asyncio.sleep()</code>. The same rule applies to any blocking call: use async-aware alternatives.</li>
+      <li><code>asyncio.gather()</code> is the primary tool for running multiple coroutines concurrently. Use <code>return_exceptions=True</code> when you need all results even if some fail — otherwise the first exception short-circuits everything.</li>
+      <li>Async is best for I/O-bound work with many concurrent operations. For CPU-bound work, async doesn't help — still need <code>multiprocessing</code>. For moderate concurrency, <code>ThreadPoolExecutor</code> is often simpler.</li>
+      <li>Async is "infectious": once one function is <code>async def</code>, its callers must also be <code>async def</code>. Design your async boundary carefully — convert at the edges (CLI entry point, route handler) and keep the async boundary as wide as needed.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 23</h4>
+      <ul>
+        <li>Rewrite the Day 21 GitHub client to use <code>httpx.AsyncClient</code> and fetch user + repos concurrently with <code>asyncio.gather()</code></li>
+        <li>Write a function that fetches 20 URLs concurrently and returns only the ones that responded within 2 seconds (use <code>return_exceptions=True</code>)</li>
+        <li>Implement a simple rate limiter using <code>asyncio.Semaphore</code>: limit to 5 concurrent requests at a time</li>
+        <li>Verify the <code>time.sleep()</code> blocking issue: run 3 coroutines with <code>time.sleep(1)</code> vs <code>asyncio.sleep(1)</code> and compare elapsed time</li>
+        <li>Use <code>asyncio.create_task()</code> to start a "ticker" background coroutine that prints a dot every second while main work runs</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 23: asyncio Advanced</strong><br>
+      You'll go deeper: <code>asyncio.Queue</code> for producer/consumer patterns, <code>asyncio.timeout</code> for per-operation timeouts, running blocking code in an executor without blocking the loop, and building a real async web scraper with <code>httpx</code>.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day21.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day23.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 22;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

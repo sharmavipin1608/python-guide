@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 29 — FastAPI Basics | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 29 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 29</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>FastAPI Basics</h1>
+  <p>FastAPI is Python's answer to Spring Boot — type-safe routes, automatic validation, and interactive docs at <code>/docs</code> out of the box. One decorator replaces <code>@RestController</code>, <code>@RequestMapping</code>, and <code>@ResponseBody</code>.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>Why FastAPI over Flask — speed, type safety, auto docs</li>
+        <li>Creating a FastAPI app and running with uvicorn</li>
+        <li>Path operations: <code>@app.get</code>, <code>@app.post</code>, <code>@app.put</code>, <code>@app.delete</code></li>
+        <li>Path parameters and query parameters</li>
+        <li>Request bodies with Pydantic models</li>
+        <li>Response models and status codes</li>
+        <li>Automatic OpenAPI docs at <code>/docs</code></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>FastAPI()</code> → <code>@SpringBootApplication</code></li>
+        <li><code>@app.get("/path")</code> → <code>@GetMapping("/path")</code></li>
+        <li><code>@app.post("/path")</code> → <code>@PostMapping("/path")</code></li>
+        <li>Path param <code>{item_id}</code> → <code>@PathVariable</code></li>
+        <li>Query param <code>?q=value</code> → <code>@RequestParam</code></li>
+        <li>Pydantic model in body → <code>@RequestBody</code> + validation annotations</li>
+        <li><code>uvicorn</code> → embedded Tomcat / Netty</li>
+        <li>Auto <code>/docs</code> (Swagger UI) → springdoc-openapi</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Setup and First Endpoint</h2>
+
+    <div class="shell-block">
+      <span class="block-label">Shell</span>
+      <pre><code class="language-bash">pip install fastapi uvicorn[standard]
+
+# Run the app
+uvicorn main:app --reload        # auto-reloads on code changes
+uvicorn main:app --port 8080     # custom port
+uvicorn main:app --workers 4     # multiple worker processes</code></pre>
+    </div>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — Spring Boot</span>
+        <pre><code class="language-java">@SpringBootApplication
+public class App { public static void main(String[] args) {
+    SpringApplication.run(App.class, args);
+}}
+
+@RestController
+@RequestMapping("/items")
+public class ItemController {
+    @GetMapping("/{id}")
+    public Item getItem(@PathVariable Long id) {
+        return itemService.findById(id);
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — FastAPI</span>
+        <pre><code class="language-python">from fastapi import FastAPI
+
+app = FastAPI(title="My API", version="1.0")
+
+@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    return {"item_id": item_id, "name": "Widget"}
+
+# That's it — visit http://localhost:8000/docs for Swagger UI</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Path Parameters and Query Parameters</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from fastapi import FastAPI, Query, Path
+from typing import Optional
+
+app = FastAPI()
+
+# Path parameters — declared as function parameters matching {name}
+@app.get("/users/{user_id}/posts/{post_id}")
+def get_post(
+    user_id: int,    # FastAPI validates and converts automatically
+    post_id: int,
+):
+    return {"user_id": user_id, "post_id": post_id}
+
+# Query parameters — any param NOT in path becomes a query param
+# GET /items?skip=0&limit=10&q=widget
+@app.get("/items")
+def list_items(
+    skip:  int = 0,          # default value makes it optional
+    limit: int = 10,
+    q:     str | None = None,  # optional string query
+):
+    items = ["Widget A", "Widget B", "Gadget X"]
+    filtered = [i for i in items if q is None or q.lower() in i.lower()]
+    return filtered[skip : skip + limit]
+
+# Validation with Query() and Path()
+@app.get("/items/validated")
+def list_validated(
+    limit: int = Query(default=10, ge=1, le=100,
+                       description="Items to return (1-100)"),
+    q:     str = Query(default=None, min_length=2,
+                       description="Search term (min 2 chars)"),
+):
+    return {"limit": limit, "q": q}
+
+@app.get("/items/{item_id}/validated")
+def get_validated(
+    item_id: int = Path(ge=1, description="Positive item ID"),
+):
+    return {"item_id": item_id}</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Request Bodies with Pydantic</h2>
+
+    <p>FastAPI uses Pydantic models for request and response bodies. Define a class, and FastAPI validates the incoming JSON against it automatically — field types, required fields, and custom validators all work out of the box.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">public class CreateItemRequest {
+    @NotNull @Size(min=1)
+    private String name;
+    @Positive
+    private double price;
+    // getters/setters or use record...
+}
+
+@PostMapping("/items")
+@ResponseStatus(HttpStatus.CREATED)
+public Item createItem(@Valid @RequestBody CreateItemRequest req) {
+    return itemService.create(req);
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from fastapi import FastAPI
+from pydantic import BaseModel, Field
+from typing import Optional
+
+app = FastAPI()
+
+class CreateItemRequest(BaseModel):
+    name:        str     = Field(min_length=1, description="Item name")
+    price:       float   = Field(gt=0, description="Price in USD")
+    description: str | None = None
+    in_stock:    bool    = True
+
+class ItemResponse(BaseModel):
+    id:          int
+    name:        str
+    price:       float
+    description: str | None
+    in_stock:    bool
+
+# Fake DB
+_db: dict[int, dict] = {}
+_next_id = 1
+
+@app.post("/items", response_model=ItemResponse, status_code=201)
+def create_item(body: CreateItemRequest):
+    global _next_id
+    item = {"id": _next_id, **body.model_dump()}
+    _db[_next_id] = item
+    _next_id += 1
+    return item
+
+@app.get("/items/{item_id}", response_model=ItemResponse)
+def get_item(item_id: int):
+    if item_id not in _db:
+        raise HTTPException(status_code=404, detail=f"Item {item_id} not found")
+    return _db[item_id]</code></pre>
+      </div>
+    </div>
+
+    <div class="callout-teal">
+      <strong>response_model:</strong> When you specify <code>response_model=ItemResponse</code>, FastAPI filters the response to only include fields defined in the model — even if your function returns extra fields. This is the Python equivalent of Jackson's <code>@JsonView</code>.
+    </div>
+  </section>
+
+  <section>
+    <h2>A Complete CRUD API</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python — main.py</span>
+      <pre><code class="language-python">from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel, Field
+from datetime import datetime, timezone
+
+app = FastAPI(title="Task API", version="1.0.0")
+
+
+# ── Schemas ──────────────────────────────────────────────────────────────────
+
+class TaskCreate(BaseModel):
+    title:       str     = Field(min_length=1, max_length=200)
+    description: str     = ""
+    priority:    int     = Field(default=3, ge=1, le=5)
+
+class TaskUpdate(BaseModel):
+    title:       str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    done:        bool | None = None
+
+class TaskResponse(BaseModel):
+    id:          int
+    title:       str
+    description: str
+    priority:    int
+    done:        bool
+    created_at:  datetime
+
+
+# ── In-memory storage ─────────────────────────────────────────────────────────
+
+_tasks: dict[int, dict] = {}
+_counter = 0
+
+
+# ── Routes ────────────────────────────────────────────────────────────────────
+
+@app.get("/tasks", response_model=list[TaskResponse])
+def list_tasks(done: bool | None = None):
+    """List all tasks, optionally filtered by done status."""
+    tasks = list(_tasks.values())
+    if done is not None:
+        tasks = [t for t in tasks if t["done"] == done]
+    return tasks
+
+
+@app.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+def create_task(body: TaskCreate):
+    """Create a new task."""
+    global _counter
+    _counter += 1
+    task = {
+        "id": _counter,
+        **body.model_dump(),
+        "done": False,
+        "created_at": datetime.now(timezone.utc),
+    }
+    _tasks[_counter] = task
+    return task
+
+
+@app.get("/tasks/{task_id}", response_model=TaskResponse)
+def get_task(task_id: int):
+    """Get a single task by ID."""
+    if task_id not in _tasks:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    return _tasks[task_id]
+
+
+@app.patch("/tasks/{task_id}", response_model=TaskResponse)
+def update_task(task_id: int, body: TaskUpdate):
+    """Partially update a task."""
+    if task_id not in _tasks:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    updates = body.model_dump(exclude_none=True)   # only provided fields
+    _tasks[task_id].update(updates)
+    return _tasks[task_id]
+
+
+@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int):
+    """Delete a task."""
+    if task_id not in _tasks:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+    del _tasks[task_id]</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Try it:</strong> Run <code>uvicorn main:app --reload</code> then open <code>http://localhost:8000/docs</code> for interactive Swagger UI — create tasks, list them, update, delete — all in the browser, no Postman needed.
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Create app</div>
+        <code>app = FastAPI(title="My API")</code>
+        <p>Run with: <code>uvicorn main:app --reload</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Route decorator</div>
+        <code>@app.get("/path") / @app.post / @app.put / @app.delete</code>
+        <p>Method + path in one decorator. Function return value becomes the response.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Path parameter</div>
+        <code>@app.get("/items/{id}") / def fn(id: int): ...</code>
+        <p>Type annotation triggers automatic conversion and validation.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Query parameter</div>
+        <code>def fn(skip: int = 0, q: str | None = None): ...</code>
+        <p>Any parameter not in path becomes a query param. Defaults make it optional.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Request body</div>
+        <code>def fn(body: MyModel): ...</code>
+        <p>Pydantic model parameter → parsed + validated from request JSON body.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">HTTP error</div>
+        <code>raise HTTPException(status_code=404, detail="Not found")</code>
+        <p>FastAPI converts this to a JSON error response automatically.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Response model</div>
+        <code>@app.get("/", response_model=MySchema)</code>
+        <p>Filters and validates the response. Extra fields are excluded.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Partial update</div>
+        <code>body.model_dump(exclude_none=True)</code>
+        <p>Only update fields that were actually provided. Essential for PATCH endpoints.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>FastAPI is a single decorator per endpoint — <code>@app.get("/path")</code> replaces <code>@RestController</code> + <code>@RequestMapping</code> + <code>@GetMapping</code>. Type hints in the function signature drive parameter parsing, validation, and documentation automatically.</li>
+      <li>Path parameters (<code>{id}</code> in the path) are declared as function arguments. Query parameters are any argument not in the path. Both are automatically typed, validated, and documented from the type annotation.</li>
+      <li>Request body validation is handled by Pydantic models. FastAPI validates the incoming JSON, returns a 422 with detailed error messages on failure, and gives you a typed Python object in the function — no manual parsing.</li>
+      <li><code>response_model</code> is both a filter and a validator. It strips extra fields from your response (security — never accidentally return passwords or internal IDs) and validates the output shape.</li>
+      <li>Visit <code>/docs</code> for Swagger UI and <code>/redoc</code> for ReDoc — both generated automatically from your type hints. No separate spec file, no annotation processing step.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 30</h4>
+      <ul>
+        <li>Build a <code>POST /users</code> endpoint that creates users with <code>name</code>, <code>email</code> (validated format), and <code>age</code> (18+). Return a 409 if the email is already registered.</li>
+        <li>Add a <code>GET /users?active=true&min_age=25</code> endpoint with optional query filtering</li>
+        <li>Add validation with <code>Field(pattern=r"^[a-z0-9_]+$")</code> to restrict usernames to alphanumeric + underscores</li>
+        <li>Test all your endpoints in <code>/docs</code> — verify error responses for invalid input</li>
+        <li>Add a <code>GET /health</code> endpoint that returns <code>{"status": "ok", "timestamp": "..."}</code></li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 30: FastAPI Advanced</strong><br>
+      Dependency injection with <code>Depends()</code>, middleware, background tasks, error handling with custom exception handlers, response models and status codes, and splitting large apps into routers — the same way Spring uses <code>@Controller</code> per domain.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day28.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day30.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 29;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 46 — Performance + Profiling | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 46 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 46</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Performance + Profiling</h1>
+  <p>Don't guess where your code is slow — measure it. Today: cProfile for function-level hotspots, line_profiler for line-by-line analysis, memory_profiler for allocations, timeit for micro-benchmarks, and the common Python performance pitfalls to avoid.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>timeit — micro-benchmarking expressions <span style="color:#555">~10 min</span></li>
+        <li>cProfile — function-level profiling <span style="color:#555">~20 min</span></li>
+        <li>line_profiler — line-by-line profiling <span style="color:#555">~15 min</span></li>
+        <li>memory_profiler — memory usage per line <span style="color:#555">~10 min</span></li>
+        <li>Common Python performance pitfalls <span style="color:#555">~15 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>timeit</strong> → JMH (Java Microbenchmark Harness)</li>
+        <li><strong>cProfile</strong> → JProfiler / async-profiler — function call stats</li>
+        <li><strong>line_profiler</strong> → no direct equivalent; closest is IntelliJ profiler at line level</li>
+        <li><strong>memory_profiler</strong> → JVM heap dump + MAT (Memory Analyzer Tool)</li>
+        <li><strong>pstats + snakeviz</strong> → JProfiler's call tree visualization</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. timeit — Micro-benchmarks</h2>
+    <p>Always start with <code>timeit</code> when comparing two implementations. It runs the expression many times and accounts for startup overhead.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — timeit in code</span>
+      <pre><code class="language-python">import timeit
+
+# Compare string concatenation approaches
+concat_loop = timeit.timeit(
+    stmt="""
+s = ""
+for i in range(1000):
+    s += str(i)
+""",
+    number=1000,
+)
+
+join_approach = timeit.timeit(
+    stmt="""s = "".join(str(i) for i in range(1000))""",
+    number=1000,
+)
+
+print(f"Loop concat:  {concat_loop:.4f}s")
+print(f"join():       {join_approach:.4f}s")
+# join() is typically 3-5x faster for large strings
+
+# Compare list vs set for 'in' lookups
+data_list = list(range(10_000))
+data_set  = set(range(10_000))
+
+list_lookup = timeit.timeit("9999 in data_list", globals=globals(), number=100_000)
+set_lookup  = timeit.timeit("9999 in data_set",  globals=globals(), number=100_000)
+print(f"list 'in': {list_lookup:.4f}s")
+print(f"set 'in':  {set_lookup:.4f}s")
+# Set is O(1), list is O(n) — set wins dramatically for large collections</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>python -m timeit -n 10000 '"".join(str(i) for i in range(100))'<br>
+      <span class="prompt">$ </span>python -m timeit -s "data = list(range(10000))" "9999 in data"
+    </div>
+  </section>
+
+  <section>
+    <h2>2. cProfile — Function-Level Profiling</h2>
+    <p>cProfile is built into Python's stdlib. It records how many times each function is called and how long each call takes — the right first tool when you need to find which function is the bottleneck.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — cProfile in code</span>
+      <pre><code class="language-python">import cProfile
+import pstats
+import io
+
+def slow_function():
+    return sum(i * i for i in range(500_000))
+
+def medium_function():
+    return [x ** 2 for x in range(100_000)]
+
+def entry_point():
+    slow_function()
+    medium_function()
+    medium_function()
+
+# Profile and capture output
+profiler = cProfile.Profile()
+profiler.enable()
+entry_point()
+profiler.disable()
+
+# Print sorted by cumulative time
+stream = io.StringIO()
+stats = pstats.Stats(profiler, stream=stream)
+stats.sort_stats("cumulative")
+stats.print_stats(10)   # top 10 functions
+print(stream.getvalue())</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span># Profile a script from the command line<br>
+      <span class="prompt">$ </span>python -m cProfile -s cumulative myscript.py<br>
+      <br>
+      <span class="prompt">$ </span># Save to file for snakeviz visualization<br>
+      <span class="prompt">$ </span>python -m cProfile -o profile.out myscript.py<br>
+      <span class="prompt">$ </span>pip install snakeviz<br>
+      <span class="prompt">$ </span>snakeviz profile.out    # opens interactive flame graph in browser
+    </div>
+
+    <h3>Reading cProfile Output</h3>
+    <div class="python-block">
+      <span class="block-label">cProfile output columns</span>
+      <pre><code class="language-text">   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    1.234    1.234  example.py:12(entry_point)
+        1    1.100    1.100    1.100    1.100  example.py:5(slow_function)
+        2    0.134    0.067    0.134    0.067  example.py:8(medium_function)
+
+# ncalls  — number of calls
+# tottime — time in this function ONLY (excluding sub-calls)
+# cumtime — total time including sub-calls  ← sort by this first
+# percall — time per single call</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. line_profiler — Line-by-Line</h2>
+    <p>Once cProfile tells you <em>which function</em> is slow, line_profiler tells you <em>which line</em> inside it. Decorate target functions with <code>@profile</code> and run with <code>kernprof</code>.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install line_profiler
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — line_profiler usage</span>
+      <pre><code class="language-python"># Decorate the function you want to profile
+@profile   # injected by kernprof at runtime — no import needed
+def process_data(records: list[dict]) -> list[dict]:
+    results = []
+    for record in records:                           # line 4
+        cleaned = {k: v.strip() for k, v in record.items() if isinstance(v, str)}  # line 5
+        if cleaned.get("status") == "active":        # line 6
+            cleaned["score"] = sum(                  # line 7
+                len(v) for v in cleaned.values()
+            )
+            results.append(cleaned)                  # line 9
+    return results</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>kernprof -l -v myscript.py<br>
+      <br>
+      # Output:<br>
+      # Line #  Hits   Time    Per Hit  % Time  Line Contents<br>
+      # =====================================================<br>
+      #      4  10000  2345.0    0.2     45.2%   for record in records:<br>
+      #      5  10000  1890.0    0.2     36.5%     cleaned = {k: v.strip()...}<br>
+      #      7   3200   780.0    0.2     15.1%     cleaned["score"] = sum(...)
+    </div>
+  </section>
+
+  <section>
+    <h2>4. memory_profiler — Memory Usage</h2>
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install memory_profiler
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from memory_profiler import profile
+
+@profile
+def load_and_process(filepath: str) -> list:
+    with open(filepath) as f:
+        data = f.readlines()          # loads all lines into memory at once
+    processed = [line.strip().upper() for line in data]
+    return processed
+
+# Run: python -m memory_profiler myscript.py
+# Output:
+# Line #  Mem usage    Increment   Line Contents
+# ================================================
+#      5   45.3 MiB    45.3 MiB   with open(filepath) as f:
+#      6  125.8 MiB    80.5 MiB       data = f.readlines()   ← huge allocation
+#      7  210.1 MiB    84.3 MiB   processed = [line.strip()...]
+#      8  125.8 MiB   -84.3 MiB   return processed           ← original freed</code></pre>
+    </div>
+
+    <h3>Generator Fix for Memory-Heavy Code</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">@profile
+def load_and_process_lazy(filepath: str):
+    """Process line by line — constant memory regardless of file size."""
+    with open(filepath) as f:
+        for line in f:             # file object is a lazy iterator
+            yield line.strip().upper()
+
+# Memory stays flat — no large allocation spike
+# The trade-off: you can only iterate once; no random access</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Common Python Performance Pitfalls</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python — pitfalls and fixes</span>
+      <pre><code class="language-python">## 1. String concatenation in a loop
+# SLOW — creates a new string on every iteration O(n²)
+result = ""
+for word in words:
+    result += word + " "
+
+# FAST — join allocates once
+result = " ".join(words)
+
+
+## 2. 'in' on a list vs set
+# SLOW — O(n) linear scan
+if item in my_list:      # 10,000 items = 10,000 comparisons worst case
+    ...
+
+# FAST — O(1) hash lookup
+lookup_set = set(my_list)
+if item in lookup_set:
+    ...
+
+
+## 3. Repeated attribute lookup in a tight loop
+import math
+# SLOW — looks up math.sqrt in the module dict every iteration
+for x in data:
+    result = math.sqrt(x)
+
+# FAST — cache the reference
+sqrt = math.sqrt
+for x in data:
+    result = sqrt(x)
+
+
+## 4. Building a list when you only need iteration
+# SLOW — materialises the whole list in memory
+for item in list(my_generator):
+    process(item)
+
+# FAST — iterate the generator directly
+for item in my_generator:
+    process(item)
+
+
+## 5. Unnecessary function call overhead
+# SLOW — calling len() on each loop iteration
+for i in range(len(my_list)):
+    ...
+
+# FAST — iterate directly
+for item in my_list:
+    ...
+
+# Or if you need the index:
+for i, item in enumerate(my_list):
+    ...
+
+
+## 6. dict.get() vs key check
+# SLOW — two hash lookups
+if key in d:
+    value = d[key]
+
+# FAST — one hash lookup
+value = d.get(key)    # returns None if missing
+
+# Or with defaultdict for counting
+from collections import defaultdict
+counts = defaultdict(int)
+for word in words:
+    counts[word] += 1   # no KeyError, no 'if word in counts' check</code></pre>
+    </div>
+
+    <h3>When to Reach for NumPy / C Extensions</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import numpy as np
+import timeit
+
+data = list(range(1_000_000))
+arr = np.array(data)
+
+# Python loop — slow, GIL overhead per iteration
+python_sum = timeit.timeit(lambda: sum(x*x for x in data), number=10)
+
+# NumPy — vectorised C operation, GIL released
+numpy_sum = timeit.timeit(lambda: np.sum(arr ** 2), number=10)
+
+print(f"Python: {python_sum:.3f}s")
+print(f"NumPy:  {numpy_sum:.3f}s")
+# NumPy is typically 50-200x faster for numerical work
+
+# Rule: if you're looping over numbers in Python, consider NumPy
+# If you're looping over heterogeneous data (dicts, strings), NumPy won't help</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Micro-benchmark</div>
+        <code>timeit.timeit("expr", number=100_000)</code>
+        <p>Run N times; divide by N for per-execution time</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">CLI benchmark</div>
+        <code>python -m timeit -n 10000 "expr"</code>
+        <p>Quick one-liners without writing a script</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Profile script</div>
+        <code>python -m cProfile -s cumulative script.py</code>
+        <p>Sort by cumtime to find slowest functions first</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Save profile</div>
+        <code>python -m cProfile -o out.prof script.py && snakeviz out.prof</code>
+        <p>snakeviz opens a flame graph in the browser</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Line profile</div>
+        <code>kernprof -l -v script.py</code>
+        <p>Decorate target functions with @profile first</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Memory profile</div>
+        <code>python -m memory_profiler script.py</code>
+        <p>Decorate target functions with @profile from memory_profiler</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">String join</div>
+        <code>"".join(parts)</code>
+        <p>Always faster than += in a loop for large strings</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Fast lookup</div>
+        <code>lookup = set(my_list); item in lookup</code>
+        <p>O(1) vs O(n) — critical for large collections</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Always measure before optimising. Use <code>timeit</code> for quick comparisons, <code>cProfile</code> to find hot functions, <code>line_profiler</code> to find the hot line within those functions.</li>
+      <li>The single biggest win in most Python code: replace <code>list</code> with <code>set</code> for membership tests. O(n) → O(1) is often a 100–1000× speedup for large collections.</li>
+      <li>String concatenation with <code>+=</code> in a loop is O(n²) — Python creates a new string object each time. Use <code>"".join(parts)</code> instead.</li>
+      <li>For numerical loops, NumPy is the correct answer — not micro-optimising Python loops. A NumPy vectorised operation can be 100× faster because it runs compiled C with the GIL released.</li>
+      <li>Generators are the memory-efficient alternative to building large lists. If you only need to iterate once, yield instead of accumulating — memory usage stays constant regardless of input size.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 47</h4>
+      <ul>
+        <li>Profile the Day 28 data pipeline with cProfile — find the slowest function</li>
+        <li>Benchmark list vs set lookup on 100k items and record the speedup ratio</li>
+        <li>Use memory_profiler on a function that reads a large file — then rewrite it with a generator and compare</li>
+        <li>Open snakeviz on a profile output and explore the flame graph</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 47 — Packaging + CLI Tools:</strong> Your code runs. Now how do you ship it? pyproject.toml, pip install -e, Click for CLI apps, and entry points that turn your package into a terminal command.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day45.html" class="nav-btn">← Day 45: Python Internals</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day47.html" class="nav-btn">Day 47: Packaging →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-46-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-46-done') === 'true';
+    localStorage.setItem('day-46-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

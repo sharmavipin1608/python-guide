@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 51 — CI/CD for Python | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/yaml.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 51 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 51</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>CI/CD for Python</h1>
+  <p>A complete GitHub Actions pipeline: ruff linting, mypy type checking, pytest with coverage, and Docker image build + push on merge. The same pipeline pattern Java teams use with Maven/Gradle, adapted for Python.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>GitHub Actions workflow structure <span style="color:#555">~10 min</span></li>
+        <li>Lint with ruff, type-check with mypy <span style="color:#555">~15 min</span></li>
+        <li>Run pytest with coverage reporting <span style="color:#555">~15 min</span></li>
+        <li>Build and push Docker image on merge <span style="color:#555">~15 min</span></li>
+        <li>Environment secrets and matrix builds <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>GitHub Actions workflow</strong> → Jenkinsfile or .github/workflows/*.yml in a Maven/Gradle project — same concept</li>
+        <li><strong>ruff</strong> → Checkstyle / PMD — style and lint enforcement</li>
+        <li><strong>mypy</strong> → javac type checking — catches type errors before runtime</li>
+        <li><strong>pytest --cov</strong> → JaCoCo coverage in Maven Surefire reports</li>
+        <li><strong>docker/build-push-action</strong> → same Docker build step used in Java CI pipelines</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. Full CI Workflow</h2>
+    <p>This single workflow file runs on every push and pull request. It catches lint errors, type errors, and test failures before anything merges.</p>
+
+    <div class="python-block">
+      <span class="block-label">.github/workflows/ci.yml</span>
+      <pre><code class="language-yaml">name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint + Type Check + Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]   # test on multiple versions
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip              # cache pip downloads between runs
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint with ruff
+        run: |
+          ruff check src/ tests/
+          ruff format --check src/ tests/   # also check formatting
+
+      - name: Type check with mypy
+        run: mypy src/ --ignore-missing-imports
+
+      - name: Run tests with coverage
+        run: |
+          pytest tests/ \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --cov-fail-under=80
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.xml
+          fail_ci_if_error: false   # don't fail CI if Codecov is down</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Docker Build + Push on Merge</h2>
+    <p>A separate job that only runs when code lands on <code>main</code>. It builds the Docker image, tags it with the commit SHA and <code>latest</code>, and pushes to GitHub Container Registry (ghcr.io) — free for public repos.</p>
+
+    <div class="python-block">
+      <span class="block-label">.github/workflows/docker.yml</span>
+      <pre><code class="language-yaml">name: Docker Build + Push
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # owner/repo-name
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write    # needed to push to ghcr.io
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # auto-provided, no setup needed
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-          # ghcr.io/owner/repo:sha-abc1234
+            type=raw,value=latest         # ghcr.io/owner/repo:latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha            # GitHub Actions cache for Docker layers
+          cache-to: type=gha,mode=max</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Environment Secrets</h2>
+    <p>Tests that hit external services (OpenAI, a real DB) need secrets. Never hardcode them — use GitHub Secrets, then reference them in the workflow as environment variables.</p>
+
+    <div class="python-block">
+      <span class="block-label">.github/workflows/ci.yml — with secrets</span>
+      <pre><code class="language-yaml">    - name: Run tests with coverage
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+        ENVIRONMENT: testing
+      run: pytest tests/ --cov=src --cov-report=xml</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Skip expensive tests in CI:</strong> Mark tests that call real external APIs with <code>@pytest.mark.slow</code> and only run them on schedule or manually — not on every push.
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — conditional test skipping</span>
+      <pre><code class="language-python">import os
+import pytest
+
+# Skip if the API key isn't set (e.g. in forks without secrets)
+skip_without_openai = pytest.mark.skipif(
+    not os.getenv("OPENAI_API_KEY"),
+    reason="OPENAI_API_KEY not set",
+)
+
+@skip_without_openai
+def test_llm_response():
+    from openai import OpenAI
+    client = OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "Say 'ok'"}],
+    )
+    assert "ok" in response.choices[0].message.content.lower()</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. ruff + mypy Configuration</h2>
+    <div class="python-block">
+      <span class="block-label">pyproject.toml — ruff + mypy</span>
+      <pre><code class="language-toml">[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes (unused imports, undefined names)
+    "I",    # isort (import ordering)
+    "UP",   # pyupgrade (use modern Python syntax)
+    "B",    # flake8-bugbear (common bugs)
+    "SIM",  # flake8-simplify (simplifiable code)
+]
+ignore = ["E501"]   # line length handled by formatter
+
+[tool.ruff.lint.isort]
+known-first-party = ["mypackage"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false          # start with false, enable gradually
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span># Fix all auto-fixable issues at once<br>
+      <span class="prompt">$ </span>ruff check --fix src/ tests/<br>
+      <span class="prompt">$ </span>ruff format src/ tests/<br>
+      <br>
+      <span class="prompt">$ </span># Run mypy<br>
+      <span class="prompt">$ </span>mypy src/ --ignore-missing-imports
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Pre-commit Hooks</h2>
+    <p>Pre-commit hooks run ruff and mypy locally before every commit — catching issues before they even reach CI. Much faster feedback loop than waiting for GitHub Actions.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install pre-commit<br>
+      <span class="prompt">$ </span>pre-commit install
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">.pre-commit-config.yaml</span>
+      <pre><code class="language-yaml">repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.0
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        additional_dependencies: [pydantic, sqlalchemy]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-merge-conflict</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Trigger on PR</div>
+        <code>on: pull_request: branches: [main]</code>
+        <p>Runs CI on every PR targeting main</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Matrix builds</div>
+        <code>strategy: matrix: python-version: ["3.11","3.12"]</code>
+        <p>Tests against multiple Python versions in parallel</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Pip cache</div>
+        <code>uses: actions/setup-python@v5 with: cache: pip</code>
+        <p>Caches pip downloads — significantly speeds up CI</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Lint + format check</div>
+        <code>ruff check src/ && ruff format --check src/</code>
+        <p>--check exits non-zero if formatting differs</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Coverage threshold</div>
+        <code>pytest --cov-fail-under=80</code>
+        <p>CI fails if coverage drops below threshold</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">GitHub secret</div>
+        <code>env: MY_SECRET: ${{ secrets.MY_SECRET }}</code>
+        <p>Add secrets in repo Settings → Secrets → Actions</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Docker layer cache</div>
+        <code>cache-from: type=gha</code>
+        <p>Reuses unchanged layers from previous builds — faster CI</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Skip test conditionally</div>
+        <code>@pytest.mark.skipif(not os.getenv("KEY"), reason="...")</code>
+        <p>Skip tests that need secrets not available in forks</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Structure CI as two separate workflows: <code>ci.yml</code> runs on every push/PR (fast — lint, test, type-check); <code>docker.yml</code> runs only on merge to main (slower — build and push image).</li>
+      <li>Cache pip downloads with <code>cache: pip</code> in <code>setup-python</code>. Without it, every CI run reinstalls all packages — typically 30–60 seconds of wasted time per run.</li>
+      <li><code>ruff check --fix</code> auto-fixes the majority of lint issues. Run it locally before pushing to avoid back-and-forth CI failures on style issues.</li>
+      <li>Never hardcode secrets in workflow files. Use GitHub Secrets and reference them with <code>${{ secrets.MY_SECRET }}</code>. Secrets are masked in logs automatically.</li>
+      <li>Pre-commit hooks catch issues in seconds locally; GitHub Actions catches them in minutes in CI. Use both — local hooks for fast feedback, CI as the authoritative gate.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 52</h4>
+      <ul>
+        <li>Add the CI workflow to your Day 49 tasklib project and push to GitHub — watch it run</li>
+        <li>Add <code>ruff format --check</code> to CI and fix any formatting issues it flags</li>
+        <li>Install pre-commit and verify it blocks a commit with a lint error</li>
+        <li>Add a matrix build that tests on Python 3.11 and 3.12 in parallel</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 52 — Scripting + Automation:</strong> Python excels at automating repetitive tasks — running shell commands, moving files, sending emails, scheduling work. Tomorrow: subprocess, shutil, schedule, and real-world automation patterns.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day50.html" class="nav-btn">← Day 50: Advanced Testing</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day52.html" class="nav-btn">Day 52: Scripting →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-51-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-51-done') === 'true';
+    localStorage.setItem('day-51-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

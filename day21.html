@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 21 — Project: REST API Client | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+    /* Project day: orange day badge */
+    .day-badge { background: #ff6b35; color: #fff; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 21 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Project</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>Project: GitHub REST API Client</h1>
+  <p>Build a real CLI tool that fetches GitHub user data, repositories, and open issues — then saves a full JSON report. Uses everything from the past week: <code>requests</code>, <code>json</code>, <code>sys.argv</code>, <code>pathlib</code>, <code>datetime</code>, and structured error handling.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Project Spec</h2>
+    <div class="spec-box">
+      <h3>What to build</h3>
+      <ul>
+        <li>A CLI tool: <code>python github_client.py &lt;username&gt; [repo_name]</code></li>
+        <li>Without <code>repo_name</code>: show user profile + top 10 repos by stars</li>
+        <li>With <code>repo_name</code>: also show open issues for that repo (first page)</li>
+        <li>Save a full JSON report to <code>report_&lt;username&gt;_&lt;timestamp&gt;.json</code></li>
+        <li>Print formatted output to terminal</li>
+        <li>Handle all errors gracefully: 404, network timeout, bad args</li>
+      </ul>
+    </div>
+    <div class="stretch-box">
+      <h4>Stretch goals</h4>
+      <ul>
+        <li>Add pagination: fetch ALL repos using the <code>Link</code> header</li>
+        <li>Handle rate limiting: check <code>X-RateLimit-Remaining</code> header, sleep if near 0</li>
+        <li>Add a <code>--token</code> arg or read <code>GITHUB_TOKEN</code> env var for authenticated requests (higher rate limit)</li>
+        <li>Use <code>ThreadPoolExecutor</code> to fetch user + repos + issues concurrently</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>github_client.py — Full Implementation</h2>
+
+    <div class="file-label">📄 github_client.py</div>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">"""
+GitHub REST API Client
+Usage: python github_client.py &lt;username&gt; [repo_name]
+Env:   GITHUB_TOKEN — optional personal access token
+"""
+import json
+import os
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import requests
+from requests.exceptions import HTTPError, Timeout, ConnectionError
+
+
+# ── Configuration ────────────────────────────────────────────────────────────
+
+BASE_URL = "https://api.github.com"
+TIMEOUT  = 10   # seconds
+
+def build_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "python-github-client/1.0",
+    })
+    token = os.environ.get("GITHUB_TOKEN")
+    if token:
+        session.headers["Authorization"] = f"Bearer {token}"
+        print("[auth] Using GITHUB_TOKEN")
+    return session
+
+
+# ── API calls ─────────────────────────────────────────────────────────────────
+
+def get_user(session: requests.Session, username: str) -> dict:
+    """Fetch a GitHub user profile. Raises ValueError if not found."""
+    resp = session.get(f"{BASE_URL}/users/{username}", timeout=TIMEOUT)
+    try:
+        resp.raise_for_status()
+    except HTTPError as e:
+        if resp.status_code == 404:
+            raise ValueError(f"User '{username}' not found on GitHub.") from e
+        raise
+    return resp.json()
+
+
+def get_repos(session: requests.Session, username: str,
+              per_page: int = 100) -> list[dict]:
+    """Fetch all public repos for a user, sorted by stars."""
+    repos = []
+    page = 1
+    while True:
+        resp = session.get(
+            f"{BASE_URL}/users/{username}/repos",
+            params={"per_page": per_page, "page": page, "sort": "updated"},
+            timeout=TIMEOUT,
+        )
+        resp.raise_for_status()
+        batch = resp.json()
+        if not batch:
+            break
+        repos.extend(batch)
+
+        # Check for next page via Link header
+        if 'next' not in resp.links:
+            break
+        page += 1
+
+    return sorted(repos, key=lambda r: r["stargazers_count"], reverse=True)
+
+
+def get_issues(session: requests.Session, username: str,
+               repo: str, per_page: int = 30) -> list[dict]:
+    """Fetch open issues for a repo (excludes pull requests)."""
+    resp = session.get(
+        f"{BASE_URL}/repos/{username}/{repo}/issues",
+        params={"state": "open", "per_page": per_page},
+        timeout=TIMEOUT,
+    )
+    try:
+        resp.raise_for_status()
+    except HTTPError as e:
+        if resp.status_code == 404:
+            raise ValueError(f"Repo '{username}/{repo}' not found.") from e
+        raise
+    # GitHub's /issues endpoint includes pull requests — filter them out
+    return [i for i in resp.json() if "pull_request" not in i]
+
+
+# ── Output formatting ─────────────────────────────────────────────────────────
+
+def print_user(user: dict) -> None:
+    print(f"\n{'='*50}")
+    print(f"  {user['login']}  ({user.get('name', 'No name')})")
+    print(f"{'='*50}")
+    if user.get("bio"):
+        print(f"  Bio:       {user['bio']}")
+    print(f"  Location:  {user.get('location') or '—'}")
+    print(f"  Company:   {user.get('company') or '—'}")
+    print(f"  Followers: {user['followers']:,}   Following: {user['following']:,}")
+    print(f"  Public repos: {user['public_repos']}")
+    if user.get("blog"):
+        print(f"  Website:   {user['blog']}")
+
+
+def print_repos(repos: list[dict], limit: int = 10) -> None:
+    print(f"\n  Top {min(limit, len(repos))} repositories by stars:\n")
+    print(f"  {'Repository':<35} {'Stars':>7} {'Forks':>6}  Language")
+    print(f"  {'-'*35} {'-'*7} {'-'*6}  {'-'*12}")
+    for r in repos[:limit]:
+        lang = r.get("language") or "—"
+        print(f"  {r['name']:<35} {r['stargazers_count']:>7,} {r['forks_count']:>6,}  {lang}")
+
+
+def print_issues(issues: list[dict], repo: str, limit: int = 10) -> None:
+    if not issues:
+        print(f"\n  No open issues in {repo}.")
+        return
+    print(f"\n  Open issues in {repo} ({len(issues)} shown):\n")
+    for i in issues[:limit]:
+        labels = ", ".join(l["name"] for l in i.get("labels", []))
+        label_str = f"  [{labels}]" if labels else ""
+        print(f"  #{i['number']:<6} {i['title'][:60]}{label_str}")
+
+
+# ── Report generation ──────────────────────────────────────────────────────────
+
+def save_report(username: str, data: dict) -> Path:
+    ts   = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    path = Path(f"report_{username}_{ts}.json")
+    path.write_text(json.dumps(data, indent=2, default=str))
+    return path
+
+
+# ── Entry point ────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    args = sys.argv[1:]
+    if not args:
+        print("Usage: python github_client.py &lt;username&gt; [repo_name]", file=sys.stderr)
+        sys.exit(1)
+
+    username  = args[0]
+    repo_name = args[1] if len(args) > 1 else None
+
+    session = build_session()
+    report: dict = {"generated_at": datetime.now(timezone.utc).isoformat(),
+                    "username": username}
+
+    try:
+        # Always fetch user profile
+        user = get_user(session, username)
+        report["user"] = user
+        print_user(user)
+
+        # Always fetch repos
+        repos = get_repos(session, username)
+        report["repos"] = repos
+        print_repos(repos)
+
+        # Optionally fetch issues
+        if repo_name:
+            issues = get_issues(session, username, repo_name)
+            report["issues"] = {"repo": repo_name, "items": issues}
+            print_issues(issues, repo_name)
+
+    except ValueError as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Timeout:
+        print("\nError: GitHub API timed out. Try again.", file=sys.stderr)
+        sys.exit(1)
+    except ConnectionError:
+        print("\nError: Cannot reach GitHub API. Check your connection.", file=sys.stderr)
+        sys.exit(1)
+    except HTTPError as e:
+        print(f"\nHTTP Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Save report
+    path = save_report(username, report)
+    print(f"\n  Report saved → {path}")
+
+
+if __name__ == "__main__":
+    main()</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Running the Client</h2>
+
+    <div class="python-block">
+      <span class="block-label">Terminal</span>
+      <pre><code class="language-python"># Basic usage — profile + repos
+python github_client.py torvalds
+
+# With repo — also shows issues
+python github_client.py torvalds linux
+
+# With auth token (higher rate limit: 5000/hr vs 60/hr)
+export GITHUB_TOKEN=ghp_your_token_here
+python github_client.py gvanrossum cpython
+
+# Example output:
+# ==================================================
+#   torvalds  (Linus Torvalds)
+# ==================================================
+#   Location:  Portland, OR
+#   Followers: 235,123   Following: 0
+#   Public repos: 8
+#
+#   Top 8 repositories by stars:
+#   Repository                           Stars  Forks  Language
+#   ----------------------------------- ------- ------  ------------
+#   linux                              222,000  64,000  C
+#   subsurface-for-dirk                    256     104  C++
+#
+#   Report saved → report_torvalds_20240315_103045.json</code></pre>
+    </div>
+
+    <h3>Stretch: Concurrent fetch with ThreadPoolExecutor</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from concurrent.futures import ThreadPoolExecutor, as_completed
+
+def fetch_all_concurrent(session, username, repo_name=None):
+    """Fetch user, repos, and issues concurrently."""
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {
+            "user":  pool.submit(get_user,  session, username),
+            "repos": pool.submit(get_repos, session, username),
+        }
+        if repo_name:
+            futures["issues"] = pool.submit(
+                get_issues, session, username, repo_name
+            )
+
+        results = {}
+        for key, future in futures.items():
+            try:
+                results[key] = future.result(timeout=30)
+            except Exception as e:
+                print(f"Failed to fetch {key}: {e}", file=sys.stderr)
+                results[key] = None
+
+    return results</code></pre>
+    </div>
+
+    <h3>Stretch: Rate limit handling</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import time
+
+def checked_get(session: requests.Session, url: str, **kwargs) -> requests.Response:
+    """Make a GET request and handle GitHub rate limiting."""
+    resp = session.get(url, **kwargs)
+
+    remaining = int(resp.headers.get("X-RateLimit-Remaining", 999))
+    reset_at   = int(resp.headers.get("X-RateLimit-Reset", 0))
+
+    if remaining < 5:
+        wait = max(0, reset_at - int(time.time())) + 1
+        print(f"Rate limit nearly exhausted. Waiting {wait}s...", file=sys.stderr)
+        time.sleep(wait)
+
+    if resp.status_code == 403 and "rate limit" in resp.text.lower():
+        print("Rate limited. Waiting 60s...", file=sys.stderr)
+        time.sleep(60)
+        resp = session.get(url, **kwargs)
+
+    return resp</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Session with auth</div>
+        <code>s.headers["Authorization"] = f"Bearer {token}"</code>
+        <p>Set once on session — applies to all requests.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Pagination via Link header</div>
+        <code>if 'next' not in resp.links: break</code>
+        <p><code>requests</code> parses the <code>Link</code> header into <code>resp.links</code> dict.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Save JSON report</div>
+        <code>path.write_text(json.dumps(data, indent=2, default=str))</code>
+        <p><code>default=str</code> converts datetime etc. to strings as fallback.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Timestamped filename</div>
+        <code>datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")</code>
+        <p>Always use UTC in filenames — avoids timezone confusion.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Rate limit headers</div>
+        <code>resp.headers.get("X-RateLimit-Remaining")</code>
+        <p>GitHub returns rate limit info on every response. Check before hammering.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Filter PRs from issues</div>
+        <code>[i for i in data if "pull_request" not in i]</code>
+        <p>GitHub's /issues endpoint includes PRs. Filter by absence of "pull_request" key.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>A <code>requests.Session</code> is the right abstraction for an API client — set auth headers and base config once, then every method call inherits them without repetition.</li>
+      <li>Pagination is handled by following the <code>Link: &lt;url&gt;; rel="next"</code> header. <code>requests</code> parses this for you into <code>resp.links["next"]["url"]</code> — always use it instead of guessing page counts.</li>
+      <li>Always catch <code>HTTPError</code>, <code>Timeout</code>, and <code>ConnectionError</code> separately. Each needs a different response: 404 = user error, timeout = retry, connection failure = infrastructure problem.</li>
+      <li>The <code>default=str</code> kwarg in <code>json.dumps</code> is a quick way to make reports serializable even when data contains <code>datetime</code> or other non-JSON types — fine for reports, not for APIs.</li>
+      <li>Threading concurrency (stretch goal) provides a real speedup here because all three calls are I/O-bound — user, repos, and issues can be fetched simultaneously with <code>ThreadPoolExecutor</code>.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Extend the project</h4>
+      <ul>
+        <li>Add a <code>--output</code> CLI argument to specify the report filename using <code>sys.argv</code> parsing</li>
+        <li>Implement full pagination: keep fetching until no <code>next</code> link is returned</li>
+        <li>Add a <code>--compare</code> flag: fetch two users and compare their stats side by side</li>
+        <li>Save a CSV of repos (name, stars, language, last_push) using <code>csv.DictWriter</code></li>
+        <li>Add the concurrent fetch variant and time it against sequential</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Next — Day 22: asyncio Basics</strong><br>
+      You've seen threads for I/O concurrency. Now learn the better approach for high-scale I/O: <code>async def</code>, <code>await</code>, and <code>asyncio.gather()</code>. One thread, thousands of concurrent operations — Python's answer to Java's <code>CompletableFuture</code>.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day20.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day22.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 21;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 48 — Design Patterns in Python | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 48 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 48</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Design Patterns in Python</h1>
+  <p>The Gang of Four patterns are still relevant — but Python idioms implement them radically differently from Java. Singleton via module, Strategy via first-class functions, Decorator via <code>@decorator</code>. Less boilerplate, same intent.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>Singleton — via module, metaclass, or lru_cache <span style="color:#555">~10 min</span></li>
+        <li>Factory — functions instead of static factory methods <span style="color:#555">~10 min</span></li>
+        <li>Strategy — first-class functions instead of interfaces <span style="color:#555">~15 min</span></li>
+        <li>Observer — callbacks and simple event bus <span style="color:#555">~15 min</span></li>
+        <li>Builder — dataclasses + method chaining <span style="color:#555">~10 min</span></li>
+        <li>Decorator pattern vs Python decorator syntax <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>Module as singleton</strong> → Spring <code>@Component</code> (singleton-scoped bean)</li>
+        <li><strong>Function as factory</strong> → static factory method, but without the ceremony</li>
+        <li><strong>Callable as strategy</strong> → <code>Comparator.comparing()</code> — a function object replacing an interface</li>
+        <li><strong>Observer via callbacks</strong> → <code>EventListener</code> without the <code>implements</code> declaration</li>
+        <li><strong>Python @decorator</strong> → Decorator pattern + Proxy pattern + AOP, all at once</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. Singleton</h2>
+    <p>Java Singleton requires a private constructor and a static field. Python has three idiomatic approaches — the cleanest being that a module itself is a singleton.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — classic singleton</span>
+        <pre><code class="language-java">public class Config {
+    private static Config instance;
+    private String dbUrl;
+
+    private Config() {
+        this.dbUrl = System.getenv("DB_URL");
+    }
+
+    public static synchronized Config getInstance() {
+        if (instance == null) {
+            instance = new Config();
+        }
+        return instance;
+    }
+
+    public String getDbUrl() { return dbUrl; }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — module as singleton</span>
+        <pre><code class="language-python"># config.py — the module IS the singleton
+import os
+
+DB_URL = os.environ.get("DB_URL", "sqlite:///./dev.db")
+SECRET_KEY = os.environ.get("SECRET_KEY", "dev-key")
+
+# Every import of this module gets the SAME module object
+# from config import DB_URL  ← always the same value</code></pre>
+      </div>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — @lru_cache singleton (for class instances)</span>
+      <pre><code class="language-python">from functools import lru_cache
+from pydantic_settings import BaseSettings
+
+class Settings(BaseSettings):
+    db_url: str = "sqlite:///./dev.db"
+    secret_key: str = "dev"
+
+@lru_cache(maxsize=1)
+def get_settings() -> Settings:
+    return Settings()   # constructed once, cached forever
+
+# Every call returns the same instance
+s1 = get_settings()
+s2 = get_settings()
+assert s1 is s2   # True</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Factory</h2>
+    <p>Java's Factory pattern involves abstract factory classes, factory methods, and often a registry. Python replaces this with plain functions and dictionaries.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — factory method pattern</span>
+        <pre><code class="language-java">public abstract class Exporter {
+    public static Exporter create(String format) {
+        return switch (format) {
+            case "csv"  -> new CsvExporter();
+            case "json" -> new JsonExporter();
+            default -> throw new IllegalArgumentException(format);
+        };
+    }
+    public abstract String export(List&lt;?&gt; data);
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — function factory</span>
+        <pre><code class="language-python">from typing import Protocol
+import json, csv, io
+
+class Exporter(Protocol):
+    def export(self, data: list) -> str: ...
+
+class CsvExporter:
+    def export(self, data: list) -> str:
+        out = io.StringIO()
+        writer = csv.writer(out)
+        for row in data:
+            writer.writerow(row if isinstance(row, list) else [row])
+        return out.getvalue()
+
+class JsonExporter:
+    def export(self, data: list) -> str:
+        return json.dumps(data, indent=2)
+
+_EXPORTERS: dict[str, type] = {
+    "csv": CsvExporter,
+    "json": JsonExporter,
+}
+
+def create_exporter(format: str) -> Exporter:
+    cls = _EXPORTERS.get(format)
+    if not cls:
+        raise ValueError(f"Unknown format: {format!r}. Choose from {list(_EXPORTERS)}")
+    return cls()
+
+exporter = create_exporter("json")
+print(exporter.export([1, 2, 3]))</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Strategy</h2>
+    <p>Java Strategy requires an interface and a class for each strategy. Python uses first-class functions — pass a callable directly. No interface, no class, no boilerplate.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — Strategy pattern</span>
+        <pre><code class="language-java">@FunctionalInterface
+interface SortStrategy {
+    List&lt;Task&gt; sort(List&lt;Task&gt; tasks);
+}
+
+class TaskSorter {
+    private SortStrategy strategy;
+    TaskSorter(SortStrategy strategy) {
+        this.strategy = strategy;
+    }
+    List&lt;Task&gt; sort(List&lt;Task&gt; tasks) {
+        return strategy.sort(tasks);
+    }
+}
+
+// Usage:
+new TaskSorter(tasks -> tasks.stream()
+    .sorted(Comparator.comparing(Task::getDueDate))
+    .collect(toList()));</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — callable strategy</span>
+        <pre><code class="language-python">from typing import Callable
+from dataclasses import dataclass
+from datetime import date
+
+@dataclass
+class Task:
+    title: str
+    priority: int
+    due_date: date
+
+SortStrategy = Callable[[list[Task]], list[Task]]
+
+class TaskSorter:
+    def __init__(self, strategy: SortStrategy):
+        self._strategy = strategy
+
+    def sort(self, tasks: list[Task]) -> list[Task]:
+        return self._strategy(tasks)
+
+# Strategies are just functions — no class, no interface
+by_due_date   = lambda tasks: sorted(tasks, key=lambda t: t.due_date)
+by_priority   = lambda tasks: sorted(tasks, key=lambda t: t.priority, reverse=True)
+by_title      = lambda tasks: sorted(tasks, key=lambda t: t.title.lower())
+
+# Swap strategy at runtime
+sorter = TaskSorter(by_priority)
+sorter.sort(tasks)
+
+sorter._strategy = by_due_date   # swap the strategy</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Observer</h2>
+    <p>Observer (event/listener) in Java requires an interface and explicit registration. Python uses plain callables — functions, lambdas, or methods — registered in a list.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — simple event bus</span>
+      <pre><code class="language-python">from typing import Callable
+from collections import defaultdict
+from dataclasses import dataclass
+
+@dataclass
+class TaskEvent:
+    task_id: int
+    event_type: str    # "created", "completed", "deleted"
+    data: dict
+
+EventHandler = Callable[[TaskEvent], None]
+
+class EventBus:
+    def __init__(self):
+        self._handlers: dict[str, list[EventHandler]] = defaultdict(list)
+
+    def subscribe(self, event_type: str, handler: EventHandler) -> None:
+        self._handlers[event_type].append(handler)
+
+    def publish(self, event: TaskEvent) -> None:
+        for handler in self._handlers.get(event.event_type, []):
+            handler(event)
+        for handler in self._handlers.get("*", []):   # wildcard
+            handler(event)
+
+bus = EventBus()
+
+# Handlers are plain functions — no interface required
+def send_email_notification(event: TaskEvent) -> None:
+    print(f"Email: Task {event.task_id} was {event.event_type}")
+
+def log_event(event: TaskEvent) -> None:
+    print(f"Log: {event}")
+
+def update_metrics(event: TaskEvent) -> None:
+    print(f"Metrics: increment tasks.{event.event_type}")
+
+bus.subscribe("completed", send_email_notification)
+bus.subscribe("*", log_event)          # receives all events
+bus.subscribe("created", update_metrics)
+
+# Publish an event
+bus.publish(TaskEvent(task_id=42, event_type="completed", data={}))
+# → Email: Task 42 was completed
+# → Log: TaskEvent(task_id=42, event_type='completed', ...)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Builder</h2>
+    <p>Java Builder is verbose — a static inner Builder class with a field for each attribute. Python's <code>@dataclass</code> with defaults and <code>replace()</code> covers most use cases. For complex objects, method chaining works cleanly.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — Builder via dataclass + replace</span>
+      <pre><code class="language-python">from dataclasses import dataclass, field, replace
+from datetime import date
+
+@dataclass
+class QueryBuilder:
+    table: str
+    conditions: list[str] = field(default_factory=list)
+    columns: list[str] = field(default_factory=lambda: ["*"])
+    limit: int | None = None
+    order_by: str | None = None
+
+    def where(self, condition: str) -> "QueryBuilder":
+        return replace(self, conditions=[*self.conditions, condition])
+
+    def select(self, *cols: str) -> "QueryBuilder":
+        return replace(self, columns=list(cols))
+
+    def take(self, n: int) -> "QueryBuilder":
+        return replace(self, limit=n)
+
+    def order(self, col: str) -> "QueryBuilder":
+        return replace(self, order_by=col)
+
+    def build(self) -> str:
+        cols = ", ".join(self.columns)
+        sql = f"SELECT {cols} FROM {self.table}"
+        if self.conditions:
+            sql += " WHERE " + " AND ".join(self.conditions)
+        if self.order_by:
+            sql += f" ORDER BY {self.order_by}"
+        if self.limit:
+            sql += f" LIMIT {self.limit}"
+        return sql
+
+query = (
+    QueryBuilder("tasks")
+    .select("id", "title", "status")
+    .where("status = 'pending'")
+    .where("priority > 1")
+    .order("due_date")
+    .take(20)
+    .build()
+)
+print(query)
+# SELECT id, title, status FROM tasks WHERE status = 'pending' AND priority > 1 ORDER BY due_date LIMIT 20</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>6. Decorator Pattern vs Python @decorator</h2>
+    <p>These are two different things with the same name. The GoF Decorator <em>pattern</em> wraps objects to add behaviour. Python's <code>@decorator</code> <em>syntax</em> wraps functions. Python's syntax implements the pattern, but more elegantly.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — GoF Decorator pattern (object wrapping)</span>
+      <pre><code class="language-python">from typing import Protocol
+
+class TextProcessor(Protocol):
+    def process(self, text: str) -> str: ...
+
+class PlainProcessor:
+    def process(self, text: str) -> str:
+        return text
+
+class UpperCaseDecorator:
+    def __init__(self, wrapped: TextProcessor):
+        self._wrapped = wrapped
+    def process(self, text: str) -> str:
+        return self._wrapped.process(text).upper()
+
+class TrimDecorator:
+    def __init__(self, wrapped: TextProcessor):
+        self._wrapped = wrapped
+    def process(self, text: str) -> str:
+        return self._wrapped.process(text).strip()
+
+# Stack decorators at runtime
+processor = TrimDecorator(UpperCaseDecorator(PlainProcessor()))
+print(processor.process("  hello world  "))   # "HELLO WORLD"</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — same result with function decorators</span>
+      <pre><code class="language-python">import functools
+
+def uppercase(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs).upper()
+    return wrapper
+
+def trim(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs).strip()
+    return wrapper
+
+@trim
+@uppercase
+def process(text: str) -> str:
+    return text
+
+print(process("  hello world  "))   # "HELLO WORLD"
+# Decorators apply bottom-up: uppercase first, then trim</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Singleton</div>
+        <code>Module-level state OR @lru_cache on a factory function</code>
+        <p>A module is already a singleton — no class needed</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Factory</div>
+        <code>def create(kind: str): return _REGISTRY[kind]()</code>
+        <p>Dict of type → class; return cls() to instantiate</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Strategy</div>
+        <code>Callable[[Input], Output]</code>
+        <p>Pass a function; swap at runtime — no interface class needed</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Observer subscribe</div>
+        <code>bus.subscribe("event", handler_fn)</code>
+        <p>Handlers are plain callables — lambdas, methods, or functions</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Builder via replace</div>
+        <code>from dataclasses import replace<br>new = replace(old, field=value)</code>
+        <p>Returns a new instance with specified fields changed — immutable builder</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Stack decorators</div>
+        <code>@outer<br>@inner<br>def fn(): ...</code>
+        <p>Apply bottom-up: inner wraps fn, then outer wraps that</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Python idiom rule</div>
+        <code># If you're writing a Java pattern verbatim, pause</code>
+        <p>Most GoF patterns collapse to functions, dicts, or decorators in Python</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">functools.wraps</div>
+        <code>@functools.wraps(func)</code>
+        <p>Preserves __name__, __doc__ on the wrapper function</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>In Python, a module is already a singleton — importing it twice returns the same object. Reach for the module-level singleton before writing a Singleton class.</li>
+      <li>Strategy in Java requires an interface + a class per strategy. In Python, pass a function. <code>Callable[[T], R]</code> is your interface, and any matching function is a valid implementation.</li>
+      <li>The Observer pattern collapses to a list of callables. A dict of <code>event_type → list[handler]</code> is a complete, practical event bus — no framework needed.</li>
+      <li><code>dataclasses.replace()</code> gives you an immutable builder pattern: each method returns a new object with one field changed. Chains read left-to-right and nothing is mutated in place.</li>
+      <li>When you find yourself writing a Java pattern verbatim in Python — multiple classes, lots of ceremony — pause and ask if a function, dict, or decorator achieves the same intent with less code.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 49</h4>
+      <ul>
+        <li>Refactor the Day 28 data pipeline to use Strategy for the "clean" step — pass different cleaning functions without changing the pipeline</li>
+        <li>Add an EventBus to the Day 35 task API and emit "task.created" / "task.completed" events</li>
+        <li>Build a QueryBuilder for SQLAlchemy's <code>select()</code> using the method-chaining pattern</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 49 — Project: Package a Library:</strong> Take the task manager from Day 35, extract the core logic into a proper installable Python package with pyproject.toml, a Click CLI entry point, full type hints, and a pytest suite.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day47.html" class="nav-btn">← Day 47: Packaging</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day49.html" class="nav-btn">Day 49: Package a Library →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-48-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-48-done') === 'true';
+    localStorage.setItem('day-48-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 25 — Pandas Basics | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 25 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 25</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>Pandas Basics</h1>
+  <p>Pandas brings labeled, structured tabular data to Python. Think of a <code>DataFrame</code> as a typed, programmable spreadsheet — or a SQL result set you can reshape, filter, aggregate, and join in code.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><code>Series</code> and <code>DataFrame</code> — the two core types</li>
+        <li>Creating DataFrames from dicts, lists, and CSV files</li>
+        <li>Selecting columns and rows: <code>df["col"]</code>, <code>df.loc</code>, <code>df.iloc</code></li>
+        <li>Filtering rows with boolean indexing</li>
+        <li>Adding and transforming columns</li>
+        <li><code>groupby</code> and aggregate functions</li>
+        <li><code>merge</code> and <code>join</code> — SQL-style table joins</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>DataFrame</code> → a typed <code>ResultSet</code> you can transform in code</li>
+        <li><code>Series</code> → a single column of a ResultSet with a label index</li>
+        <li><code>df[df["age"] &gt; 30]</code> → <code>WHERE age &gt; 30</code></li>
+        <li><code>df.groupby("dept").sum()</code> → <code>GROUP BY dept</code></li>
+        <li><code>pd.merge(df1, df2, on="id")</code> → <code>JOIN … ON id</code></li>
+        <li><code>df.to_csv()</code> → writing to a file-based data source</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Series and DataFrame</h2>
+
+    <h3>Series — a labeled 1D array</h3>
+    <p>A <code>Series</code> is a one-dimensional labeled array — like a NumPy array but with an index. Each value has a label, not just a position number. It's a single column of data.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+# Create from list — auto-indexed 0, 1, 2...
+prices = pd.Series([9.99, 14.99, 7.49, 19.99])
+print(prices)
+# 0     9.99
+# 1    14.99
+# 2     7.49
+# 3    19.99
+# dtype: float64
+
+# Create with named index
+scores = pd.Series({"Alice": 92, "Bob": 85, "Carol": 78})
+print(scores["Alice"])   # 92
+print(scores.mean())     # 85.0
+print(scores > 80)       # Alice: True, Bob: True, Carol: False</code></pre>
+    </div>
+
+    <h3>DataFrame — a labeled 2D table</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+# Create from dict of lists — most common
+data = {
+    "name":   ["Alice", "Bob", "Carol", "Dave"],
+    "dept":   ["Eng", "Sales", "Eng", "HR"],
+    "salary": [95_000, 60_000, 88_000, 72_000],
+    "years":  [5, 3, 7, 2],
+}
+df = pd.DataFrame(data)
+print(df)
+#     name   dept  salary  years
+# 0  Alice    Eng   95000      5
+# 1    Bob  Sales   60000      3
+# 2  Carol    Eng   88000      7
+# 3   Dave     HR   72000      2
+
+# Basic inspection
+print(df.shape)       # (4, 4) — rows, columns
+print(df.dtypes)      # name: object, salary: int64 ...
+print(df.describe())  # stats for numeric columns
+print(df.head(2))     # first 2 rows
+print(df.tail(2))     # last 2 rows
+print(df.info())      # column types + null counts</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Reading and Selecting Data</h2>
+
+    <h3>Loading from CSV</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+# Read CSV — handles headers, types, encoding automatically
+df = pd.read_csv("employees.csv")
+
+# Common options
+df = pd.read_csv(
+    "sales.csv",
+    parse_dates=["date"],          # auto-parse date columns
+    dtype={"amount": float},       # enforce column types
+    na_values=["N/A", "—", ""],    # treat these as NaN
+    encoding="utf-8",
+    sep=",",                        # delimiter (default comma)
+)
+
+# Read just a few columns — faster for large files
+df = pd.read_csv("large.csv", usecols=["id", "name", "amount"])</code></pre>
+    </div>
+
+    <h3>Selecting columns and rows</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+df = pd.DataFrame({
+    "name":   ["Alice", "Bob", "Carol", "Dave"],
+    "dept":   ["Eng", "Sales", "Eng", "HR"],
+    "salary": [95_000, 60_000, 88_000, 72_000],
+    "years":  [5, 3, 7, 2],
+})
+
+# Select a single column → Series
+names = df["name"]
+
+# Select multiple columns → DataFrame
+subset = df[["name", "salary"]]
+
+# .loc — label-based (row label, column label)
+print(df.loc[0, "name"])         # "Alice" — row 0, column "name"
+print(df.loc[0:2, "name":"salary"])  # rows 0-2, cols name to salary (inclusive!)
+
+# .iloc — integer-position based (like list indexing)
+print(df.iloc[0, 0])             # "Alice" — first row, first column
+print(df.iloc[0:2, 0:2])         # rows 0-1, cols 0-1 (exclusive end!)
+print(df.iloc[:, -1])            # last column: years</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>loc vs iloc:</strong> <code>df.loc[0:2]</code> includes row 2 (label-based, inclusive). <code>df.iloc[0:2]</code> excludes row 2 (position-based, like Python slicing). This inconsistency trips everyone up — know which one you're using.
+    </div>
+
+    <h3>Boolean filtering</h3>
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — SQL equivalent</span>
+        <pre><code class="language-java">// SELECT * FROM employees
+// WHERE salary > 80000 AND dept = 'Eng'
+employees.stream()
+    .filter(e -> e.salary > 80_000
+             && e.dept.equals("Eng"))
+    .collect(toList());</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import pandas as pd
+
+# Single condition
+high_earners = df[df["salary"] > 80_000]
+
+# Multiple conditions — use & (and), | (or), ~ (not)
+eng_high = df[(df["dept"] == "Eng") & (df["salary"] > 80_000)]
+
+# .query() — SQL-like string syntax
+eng_high = df.query("dept == 'Eng' and salary > 80_000")
+
+# isin — filter by list of values
+tech_depts = df[df["dept"].isin(["Eng", "Design"])]
+
+# str methods on string columns
+alices = df[df["name"].str.startswith("A")]
+contains_a = df[df["name"].str.contains("a", case=False)]</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Transforming Data</h2>
+
+    <h3>Adding and modifying columns</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+df = pd.DataFrame({
+    "name":   ["Alice", "Bob", "Carol", "Dave"],
+    "dept":   ["Eng", "Sales", "Eng", "HR"],
+    "salary": [95_000, 60_000, 88_000, 72_000],
+    "years":  [5, 3, 7, 2],
+})
+
+# New column from arithmetic
+df["monthly"] = df["salary"] / 12
+
+# New column from condition
+df["senior"] = df["years"] >= 5
+
+# New column from string operation
+df["name_upper"] = df["name"].str.upper()
+
+# apply() — apply any function row-by-row or element-by-element
+df["band"] = df["salary"].apply(
+    lambda s: "high" if s > 90_000 else "mid" if s > 70_000 else "low"
+)
+
+# rename columns
+df = df.rename(columns={"salary": "annual_salary", "years": "tenure"})
+
+# drop columns
+df = df.drop(columns=["monthly"])
+
+# sort
+df_sorted = df.sort_values("annual_salary", ascending=False)
+print(df_sorted[["name", "annual_salary", "band"]])</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>groupby and Aggregation</h2>
+
+    <p><code>groupby</code> works just like SQL's <code>GROUP BY</code> — no sorting required unlike <code>itertools.groupby</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — SQL</span>
+        <pre><code class="language-java">// SELECT dept, AVG(salary), COUNT(*)
+// FROM employees GROUP BY dept
+employees.stream()
+    .collect(Collectors.groupingBy(
+        e -> e.dept,
+        Collectors.averagingDouble(e -> e.salary)
+    ));</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import pandas as pd
+
+df = pd.DataFrame({
+    "name":   ["Alice", "Bob", "Carol", "Dave", "Eve"],
+    "dept":   ["Eng", "Sales", "Eng", "HR", "Sales"],
+    "salary": [95_000, 60_000, 88_000, 72_000, 65_000],
+    "years":  [5, 3, 7, 2, 4],
+})
+
+# Group by one column
+by_dept = df.groupby("dept")
+
+# Single aggregation
+print(by_dept["salary"].mean())
+# dept
+# Eng      91500.0
+# HR       72000.0
+# Sales    62500.0
+
+# Multiple aggregations
+summary = by_dept["salary"].agg(["mean", "min", "max", "count"])
+print(summary)
+
+# Named aggregations — control output column names
+summary = by_dept.agg(
+    avg_salary=("salary", "mean"),
+    headcount=("name",   "count"),
+    avg_tenure=("years",  "mean"),
+)
+print(summary)
+
+# Group by multiple columns
+by_dept_seniority = df.groupby(["dept", df["years"] >= 5])["salary"].mean()</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>merge — SQL-Style Joins</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+employees = pd.DataFrame({
+    "id":   [1, 2, 3, 4],
+    "name": ["Alice", "Bob", "Carol", "Dave"],
+    "dept_id": [10, 20, 10, 30],
+})
+
+departments = pd.DataFrame({
+    "dept_id": [10, 20, 30],
+    "dept_name": ["Engineering", "Sales", "HR"],
+    "budget": [500_000, 200_000, 150_000],
+})
+
+# INNER JOIN — only matching rows
+inner = pd.merge(employees, departments, on="dept_id")
+print(inner[["name", "dept_name"]])
+
+# LEFT JOIN — all employees, NaN for unmatched dept
+left = pd.merge(employees, departments, on="dept_id", how="left")
+
+# RIGHT JOIN / OUTER JOIN
+right = pd.merge(employees, departments, on="dept_id", how="right")
+outer = pd.merge(employees, departments, on="dept_id", how="outer")
+
+# Join on different column names
+pd.merge(employees, departments,
+         left_on="dept_id", right_on="dept_id")
+
+# Concatenate DataFrames vertically (like SQL UNION)
+q1 = pd.DataFrame({"month": ["Jan", "Feb"], "sales": [100, 120]})
+q2 = pd.DataFrame({"month": ["Mar", "Apr"], "sales": [130, 110]})
+all_data = pd.concat([q1, q2], ignore_index=True)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Create DataFrame</div>
+        <code>pd.DataFrame({"col": [1,2,3]})</code>
+        <p>From dict of lists. Also: <code>pd.read_csv("file.csv")</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Select column</div>
+        <code>df["name"] / df[["name","salary"]]</code>
+        <p>Single bracket → Series. Double bracket → DataFrame.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Label-based select</div>
+        <code>df.loc[0:2, "name":"salary"]</code>
+        <p>Both ends inclusive. Use for named indices.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Position-based select</div>
+        <code>df.iloc[0:2, 0:3]</code>
+        <p>Exclusive end (like Python slicing). Use for positional access.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Filter rows</div>
+        <code>df[df["salary"] &gt; 80_000]</code>
+        <p>Use <code>&amp;</code> for AND, <code>|</code> for OR. Or use <code>df.query("salary &gt; 80000")</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">groupby</div>
+        <code>df.groupby("dept")["salary"].agg(["mean","count"])</code>
+        <p>Works like SQL GROUP BY. No pre-sorting needed.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">merge / join</div>
+        <code>pd.merge(df1, df2, on="id", how="inner")</code>
+        <p>how: "inner", "left", "right", "outer". Like SQL JOIN.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Export</div>
+        <code>df.to_csv("out.csv", index=False)</code>
+        <p>Also: <code>to_json()</code>, <code>to_excel()</code>, <code>to_parquet()</code>.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>A <code>DataFrame</code> is a labeled 2D table — columns have names, rows have an index. Think of it as a SQL result set that you can reshape, filter, and aggregate without writing SQL.</li>
+      <li><code>df.loc</code> is label-based (inclusive on both ends). <code>df.iloc</code> is position-based (exclusive end, like Python slicing). Know which you're using — they behave differently at the boundaries.</li>
+      <li>Boolean filtering (<code>df[df["col"] &gt; value]</code>) is the primary way to query rows. Use <code>&amp;</code> and <code>|</code> for multiple conditions, always wrapped in parentheses. Use <code>df.query()</code> for readability with complex conditions.</li>
+      <li><code>groupby</code> is Pandas' GROUP BY — it works on unsorted data (unlike Python's <code>itertools.groupby</code>) and supports multiple aggregations with <code>agg()</code>. Named aggregations keep your output column names clean.</li>
+      <li><code>pd.merge()</code> is SQL JOIN. The <code>how</code> parameter controls whether unmatched rows are kept. Always specify <code>how</code> explicitly — don't rely on the default "inner" being what you want.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 26</h4>
+      <ul>
+        <li>Load any CSV (e.g. a sample sales dataset), inspect it with <code>.info()</code> and <code>.describe()</code>, and answer: which columns have nulls? What's the min/max of numeric columns?</li>
+        <li>Filter the DataFrame to show only rows where a numeric column exceeds its mean</li>
+        <li>Group by a categorical column and compute the total and average of a numeric column — format the result as a clean summary table</li>
+        <li>Add a "rank" column that ranks rows within each group by a numeric value using <code>groupby().rank()</code></li>
+        <li>Merge two DataFrames (employees + departments) and verify left join produces all employees even if their department is missing</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 26: Pandas Advanced</strong><br>
+      You'll go deeper: <code>apply()</code> with custom functions, <code>pivot_table</code>, handling missing values, string column operations with <code>.str</code>, and exporting to multiple formats. Plus the Day 28 data pipeline project preview.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day24.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day26.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 25;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

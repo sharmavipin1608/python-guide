@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 52 — Scripting + Automation | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 52 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 52</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Scripting + Automation</h1>
+  <p>Python is the best scripting language for a developer. Run shell commands, move and archive files, send emails, schedule recurring tasks — all without leaving Python. This is where Java developers often discover Python's biggest practical advantage.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>subprocess — running shell commands from Python <span style="color:#555">~20 min</span></li>
+        <li>shutil — file operations (copy, move, archive) <span style="color:#555">~15 min</span></li>
+        <li>schedule — running functions on a timer <span style="color:#555">~10 min</span></li>
+        <li>Sending emails with smtplib <span style="color:#555">~15 min</span></li>
+        <li>Real-world automation example <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>subprocess.run()</strong> → <code>Runtime.exec()</code> / <code>ProcessBuilder</code> — but much cleaner</li>
+        <li><strong>shutil.copy()</strong> → <code>Files.copy()</code> in java.nio.file</li>
+        <li><strong>shutil.make_archive()</strong> → <code>ZipOutputStream</code> — but one line instead of 20</li>
+        <li><strong>schedule</strong> → Quartz Scheduler / Spring <code>@Scheduled</code> for simple recurring tasks</li>
+        <li><strong>smtplib</strong> → JavaMail API — lower level, but the concepts are identical</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. subprocess — Run Shell Commands</h2>
+    <p><code>subprocess.run()</code> is the modern way to run external programs from Python. It replaces the old <code>os.system()</code> and gives you full control over stdin, stdout, stderr, and return codes.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — subprocess basics</span>
+      <pre><code class="language-python">import subprocess
+
+# Simple command — capture output
+result = subprocess.run(
+    ["git", "status"],
+    capture_output=True,    # captures stdout and stderr
+    text=True,              # decode bytes to str automatically
+    check=True,             # raise CalledProcessError if exit code != 0
+)
+print(result.stdout)
+print(result.returncode)   # 0 = success
+
+# Run a shell pipeline (use shell=True carefully — avoid with user input)
+result = subprocess.run(
+    "ls -la | grep .py",
+    shell=True,
+    capture_output=True,
+    text=True,
+)
+
+# Pass input to stdin
+result = subprocess.run(
+    ["sort"],
+    input="banana\napple\ncherry\n",
+    capture_output=True,
+    text=True,
+)
+print(result.stdout)   # apple\nbanana\ncherry\n</code></pre>
+    </div>
+
+    <h3>Practical Automation Helpers</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import subprocess
+from pathlib import Path
+
+def run(cmd: list[str], cwd: Path | None = None) -> str:
+    """Run a command, raise on failure, return stdout."""
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, check=True, cwd=cwd
+    )
+    return result.stdout.strip()
+
+def git_current_branch() -> str:
+    return run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
+
+def git_log(n: int = 10) -> list[str]:
+    output = run(["git", "log", f"--oneline", f"-{n}"])
+    return output.splitlines()
+
+def docker_ps() -> list[dict]:
+    """List running containers as structured data."""
+    output = run(["docker", "ps", "--format", "{{.ID}}\t{{.Image}}\t{{.Status}}"])
+    containers = []
+    for line in output.splitlines():
+        parts = line.split("\t")
+        containers.append({"id": parts[0], "image": parts[1], "status": parts[2]})
+    return containers
+
+# Run multiple commands, abort on first failure
+def deploy(tag: str) -> None:
+    run(["docker", "build", "-t", f"myapp:{tag}", "."])
+    run(["docker", "push", f"myapp:{tag}"])
+    run(["kubectl", "set", "image", "deployment/myapp", f"app=myapp:{tag}"])
+    print(f"Deployed myapp:{tag}")</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Security warning:</strong> Never use <code>shell=True</code> with user-provided input — it enables shell injection. Pass commands as a list (<code>["git", "status"]</code>), not a string, whenever possible.
+    </div>
+  </section>
+
+  <section>
+    <h2>2. shutil — File Operations</h2>
+    <p>shutil (shell utilities) handles high-level file operations that <code>pathlib</code> and <code>os</code> don't cover: copying with metadata, moving across filesystems, and creating archives.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import shutil
+from pathlib import Path
+
+src = Path("reports/2026-04")
+dst = Path("archive/2026-04")
+
+# Copy a file (metadata preserved)
+shutil.copy2("report.pdf", "backup/report.pdf")
+
+# Copy an entire directory tree
+shutil.copytree(src, dst)
+
+# Move (works across filesystems, unlike Path.rename)
+shutil.move("temp/output.csv", "final/output.csv")
+
+# Delete a directory tree (careful!)
+shutil.rmtree("build/", ignore_errors=True)
+
+# Find the location of an executable (like `which` on Unix)
+python_path = shutil.which("python3")
+print(python_path)   # /usr/bin/python3
+
+# Create a zip/tar archive
+shutil.make_archive(
+    base_name="backup-2026-04",   # output file name (no extension)
+    format="zip",                  # or "tar", "gztar", "bztar"
+    root_dir=".",
+    base_dir="reports/",           # directory to archive
+)
+# Creates: backup-2026-04.zip
+
+# Extract an archive
+shutil.unpack_archive("backup-2026-04.zip", extract_dir="restored/")</code></pre>
+    </div>
+
+    <h3>Disk Usage</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import shutil
+
+# Check disk space before a large operation
+total, used, free = shutil.disk_usage("/")
+print(f"Total: {total // (1024**3)} GB")
+print(f"Used:  {used  // (1024**3)} GB")
+print(f"Free:  {free  // (1024**3)} GB")
+
+GB = 1024 ** 3
+if free < 5 * GB:
+    raise RuntimeError("Less than 5 GB free — aborting backup")</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. schedule — Recurring Tasks</h2>
+    <p>The <code>schedule</code> library runs functions on a timer with a readable API. It's the right choice for single-process scheduled tasks — simpler than Celery Beat when you don't need distributed workers.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install schedule
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import schedule
+import time
+import logging
+
+log = logging.getLogger(__name__)
+
+def cleanup_temp_files():
+    import shutil, pathlib
+    tmp = pathlib.Path("/tmp/myapp")
+    if tmp.exists():
+        shutil.rmtree(tmp)
+    log.info("Temp files cleaned")
+
+def send_daily_report():
+    log.info("Sending daily report...")
+    # build and send report
+
+def sync_data():
+    log.info("Syncing data with external API...")
+
+# Schedule declarations — very readable
+schedule.every(30).minutes.do(cleanup_temp_files)
+schedule.every().day.at("08:00").do(send_daily_report)
+schedule.every().monday.at("09:00").do(sync_data)
+schedule.every(5).seconds.do(lambda: log.debug("heartbeat"))
+
+log.info("Scheduler started")
+while True:
+    schedule.run_pending()
+    time.sleep(1)    # check every second</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>schedule vs Celery Beat:</strong> Use <code>schedule</code> for single-process scripts (a cron-replacement). Use Celery Beat when you need tasks distributed across workers, retries, or monitoring.
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Sending Emails with smtplib</h2>
+    <div class="python-block">
+      <span class="block-label">Python — plain text email</span>
+      <pre><code class="language-python">import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+from pathlib import Path
+
+def send_email(
+    to: list[str],
+    subject: str,
+    body: str,
+    attachments: list[Path] | None = None,
+    smtp_host: str = "smtp.gmail.com",
+    smtp_port: int = 587,
+    from_addr: str = "",
+    password: str = "",
+) -> None:
+    msg = MIMEMultipart()
+    msg["From"] = from_addr
+    msg["To"] = ", ".join(to)
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    # Attach files
+    for filepath in (attachments or []):
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(filepath.read_bytes())
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f"attachment; filename={filepath.name}")
+        msg.attach(part)
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.starttls()               # upgrade to TLS
+        server.login(from_addr, password)
+        server.sendmail(from_addr, to, msg.as_string())
+
+# Usage
+import os
+send_email(
+    to=["boss@example.com"],
+    subject="Daily Report — 2026-04-26",
+    body="Please find today's report attached.",
+    attachments=[Path("report.csv")],
+    from_addr=os.environ["EMAIL_FROM"],
+    password=os.environ["EMAIL_PASSWORD"],
+)</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Gmail tip:</strong> Use an App Password (not your real password) when authenticating with Gmail SMTP. Go to Google Account → Security → App passwords. Store it in an environment variable, never in code.
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Real-world Automation: Report Generator</h2>
+    <p>Combining everything — read data, generate a report, archive old files, send email, run on a schedule.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — daily_report.py</span>
+      <pre><code class="language-python">import os
+import shutil
+import schedule
+import time
+import logging
+from datetime import date
+from pathlib import Path
+import pandas as pd
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger(__name__)
+
+REPORT_DIR = Path("reports")
+ARCHIVE_DIR = Path("archive")
+REPORT_DIR.mkdir(exist_ok=True)
+ARCHIVE_DIR.mkdir(exist_ok=True)
+
+def generate_report() -> Path:
+    """Pull data, build a CSV report, return the file path."""
+    today = date.today().isoformat()
+    output = REPORT_DIR / f"report-{today}.csv"
+
+    # Simulate: replace with real DB/API query
+    df = pd.DataFrame({
+        "date": [today] * 3,
+        "metric": ["sales", "signups", "churn"],
+        "value": [12_450, 87, 3],
+    })
+    df.to_csv(output, index=False)
+    log.info("report_generated", extra={"file": str(output)})
+    return output
+
+def archive_old_reports(days_old: int = 30) -> None:
+    """Move reports older than N days to archive/."""
+    cutoff = date.today().toordinal() - days_old
+    for report in REPORT_DIR.glob("report-*.csv"):
+        try:
+            report_date = date.fromisoformat(report.stem.replace("report-", ""))
+            if report_date.toordinal() < cutoff:
+                shutil.move(str(report), ARCHIVE_DIR / report.name)
+                log.info("report_archived", extra={"file": report.name})
+        except ValueError:
+            pass
+
+def daily_job() -> None:
+    log.info("Starting daily job")
+    report_file = generate_report()
+    archive_old_reports()
+    # send_email(to=["team@example.com"], subject="Daily Report", ..., attachments=[report_file])
+    log.info("Daily job complete")
+
+schedule.every().day.at("07:00").do(daily_job)
+
+if __name__ == "__main__":
+    daily_job()   # run once immediately on start
+    while True:
+        schedule.run_pending()
+        time.sleep(60)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Run command</div>
+        <code>subprocess.run(["git", "status"], capture_output=True, text=True, check=True)</code>
+        <p>check=True raises on non-zero exit; text=True decodes bytes</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Get stdout</div>
+        <code>result.stdout.strip()</code>
+        <p>Strip trailing newline; result.returncode for exit code</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Copy file</div>
+        <code>shutil.copy2(src, dst)</code>
+        <p>copy2 preserves metadata; copy doesn't</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Copy directory</div>
+        <code>shutil.copytree(src, dst)</code>
+        <p>Copies entire directory tree recursively</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Create archive</div>
+        <code>shutil.make_archive("name", "zip", ".", "folder/")</code>
+        <p>Formats: zip, tar, gztar, bztar, xztar</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Schedule</div>
+        <code>schedule.every().day.at("08:00").do(fn)</code>
+        <p>Also: .every(30).minutes, .every().monday</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Run scheduler</div>
+        <code>while True: schedule.run_pending(); time.sleep(1)</code>
+        <p>Checks pending jobs every second; sleep(60) is fine for minute-resolution schedules</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Send email</div>
+        <code>smtplib.SMTP("smtp.gmail.com", 587)</code>
+        <p>Call .starttls() before .login(); use App Password for Gmail</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Always pass commands as a list to <code>subprocess.run()</code> — never use <code>shell=True</code> with untrusted input. The list form is safer and doesn't require shell escaping.</li>
+      <li><code>shutil.make_archive()</code> creates zip/tar archives in one line. This replaces 15–20 lines of Java <code>ZipOutputStream</code> code and is harder to get wrong.</li>
+      <li><code>schedule</code> is the right choice for simple single-process recurring tasks. For tasks that need to survive process restarts, run on multiple machines, or retry on failure — use Celery Beat instead.</li>
+      <li>Store email credentials in environment variables, never in code. Use App Passwords for Gmail (not your account password) to enable SMTP access without lowering account security.</li>
+      <li>The real power of Python scripting is combining these tools: subprocess to run commands, pathlib/shutil for files, schedule for timing, smtplib for notifications — all in one readable script with no framework overhead.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 53</h4>
+      <ul>
+        <li>Write a script that uses subprocess to run <code>git log --oneline -20</code> and formats the output as a table</li>
+        <li>Write a file archiver that moves all <code>.log</code> files older than 7 days to an <code>archive/</code> folder and zips them</li>
+        <li>Add a schedule that runs a cleanup function every hour and prints a heartbeat every minute</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 53 — Web Scraping:</strong> Collect data from websites that don't have an API. requests + BeautifulSoup for static pages, Playwright for JavaScript-rendered content, and the ethical considerations of scraping responsibly.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day51.html" class="nav-btn">← Day 51: CI/CD</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day53.html" class="nav-btn">Day 53: Web Scraping →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-52-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-52-done') === 'true';
+    localStorage.setItem('day-52-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

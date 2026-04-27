@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 43 — Advanced OOP: ABCs + Protocols | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 4 — Advanced: purple badge */
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 43 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 43</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Advanced OOP: ABCs + Protocols</h1>
+  <p>Python has two distinct ways to define contracts: ABCs enforce nominal typing (like Java interfaces), and Protocols enforce structural typing (duck typing with type checker support). Knowing when to use each is a senior Python skill.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>Why Python doesn't need interfaces like Java — and when it does <span style="color:#555">~10 min</span></li>
+        <li>abc.ABC and @abstractmethod — enforced nominal contracts <span style="color:#555">~20 min</span></li>
+        <li>typing.Protocol — structural subtyping <span style="color:#555">~20 min</span></li>
+        <li>ABC vs Protocol — when to use each <span style="color:#555">~10 min</span></li>
+        <li>Real-world use: repository pattern with Protocol <span style="color:#555">~15 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>abc.ABC + @abstractmethod</strong> → Java <code>abstract class</code> or <code>interface</code> with enforced implementation</li>
+        <li><strong>typing.Protocol</strong> → structural interface — like if Java matched types by shape, not by <code>implements</code></li>
+        <li><strong>ABC</strong> → nominal typing — you must explicitly inherit from it</li>
+        <li><strong>Protocol</strong> → structural typing — if it has the right methods, it satisfies the contract</li>
+        <li><strong>runtime_checkable Protocol</strong> → limited <code>isinstance()</code> check by shape, not inheritance</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. Why Python Doesn't Need Interfaces (Usually)</h2>
+    <p>In Java, interfaces are the primary mechanism for polymorphism — you can't pass a <code>List</code> where a <code>Collection</code> is expected without implementing the interface. Python uses duck typing: if an object has the right methods, it works, regardless of its class hierarchy.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — interface required</span>
+        <pre><code class="language-java">interface Serializable {
+    String serialize();
+}
+
+class JsonSerializer implements Serializable {
+    public String serialize() { return "{}"; }
+}
+
+// Must declare implements Serializable
+void save(Serializable s) {
+    System.out.println(s.serialize());
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — duck typing</span>
+        <pre><code class="language-python">class JsonSerializer:
+    def serialize(self) -> str:
+        return "{}"
+
+class XmlSerializer:
+    def serialize(self) -> str:
+        return "<root/>"
+
+# No interface needed — any object with .serialize() works
+def save(s) -> None:
+    print(s.serialize())
+
+save(JsonSerializer())   # works
+save(XmlSerializer())    # works too</code></pre>
+      </div>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Duck typing is fine for small codebases.</strong> But as a project grows, you lose the ability to know what a function actually requires. ABCs and Protocols solve this — they bring back contracts without requiring Java-style explicit declarations.
+    </div>
+  </section>
+
+  <section>
+    <h2>2. abc.ABC — Enforced Abstract Contracts</h2>
+    <p>Inherit from <code>ABC</code> and decorate methods with <code>@abstractmethod</code>. Python will refuse to instantiate any subclass that hasn't implemented every abstract method — enforced at runtime, not compile time.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — abstract class</span>
+        <pre><code class="language-java">public abstract class Repository&lt;T&gt; {
+    public abstract T findById(int id);
+    public abstract void save(T entity);
+    public abstract void delete(int id);
+    public abstract List&lt;T&gt; findAll();
+
+    // Concrete method in abstract class
+    public boolean exists(int id) {
+        return findById(id) != null;
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — ABC</span>
+        <pre><code class="language-python">from abc import ABC, abstractmethod
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+class Repository(ABC, Generic[T]):
+    @abstractmethod
+    def find_by_id(self, id: int) -> T | None: ...
+
+    @abstractmethod
+    def save(self, entity: T) -> None: ...
+
+    @abstractmethod
+    def delete(self, id: int) -> None: ...
+
+    @abstractmethod
+    def find_all(self) -> list[T]: ...
+
+    # Concrete method is fine in an ABC
+    def exists(self, id: int) -> bool:
+        return self.find_by_id(id) is not None</code></pre>
+      </div>
+    </div>
+
+    <h3>Implementing an ABC</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from dataclasses import dataclass
+
+@dataclass
+class Task:
+    id: int
+    title: str
+
+class InMemoryTaskRepository(Repository[Task]):
+    def __init__(self):
+        self._store: dict[int, Task] = {}
+
+    def find_by_id(self, id: int) -> Task | None:
+        return self._store.get(id)
+
+    def save(self, entity: Task) -> None:
+        self._store[entity.id] = entity
+
+    def delete(self, id: int) -> None:
+        self._store.pop(id, None)
+
+    def find_all(self) -> list[Task]:
+        return list(self._store.values())
+
+# Works fine
+repo = InMemoryTaskRepository()
+repo.save(Task(id=1, title="Buy milk"))
+
+# Missing an abstract method? Python raises TypeError at instantiation:
+class BrokenRepo(Repository[Task]):
+    pass  # forgot to implement methods
+
+# BrokenRepo()  → TypeError: Can't instantiate abstract class BrokenRepo
+#                  with abstract methods delete, find_all, find_by_id, save</code></pre>
+    </div>
+
+    <h3>Abstract Properties and Class Methods</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from abc import ABC, abstractmethod
+
+class DataSource(ABC):
+    @property
+    @abstractmethod
+    def connection_string(self) -> str:
+        """Subclasses must implement this property."""
+        ...
+
+    @classmethod
+    @abstractmethod
+    def from_env(cls) -> "DataSource":
+        """Factory method that reads config from environment."""
+        ...
+
+class PostgresDataSource(DataSource):
+    @property
+    def connection_string(self) -> str:
+        return "postgresql://localhost/mydb"
+
+    @classmethod
+    def from_env(cls) -> "PostgresDataSource":
+        import os
+        return cls()  # in reality, reads from os.environ</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. typing.Protocol — Structural Typing</h2>
+    <p>A Protocol defines a contract by shape — any class that has the required methods and attributes satisfies the Protocol, without explicitly inheriting from it. This is structural typing, and it's what mypy/pyright use to check duck-typed code.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — Protocol</span>
+      <pre><code class="language-python">from typing import Protocol, runtime_checkable
+
+@runtime_checkable   # allows isinstance() checks
+class Serializable(Protocol):
+    def serialize(self) -> str: ...
+    def deserialize(self, data: str) -> None: ...
+
+# Neither class inherits from Serializable
+class JsonSerializer:
+    def serialize(self) -> str:
+        return '{"type": "json"}'
+    def deserialize(self, data: str) -> None:
+        import json; json.loads(data)
+
+class XmlSerializer:
+    def serialize(self) -> str:
+        return "<root/>"
+    def deserialize(self, data: str) -> None:
+        pass   # imagine real XML parsing here
+
+# Type-safe function — mypy verifies the argument matches Serializable
+def process(s: Serializable) -> str:
+    return s.serialize()
+
+process(JsonSerializer())   # ✅ type checker is happy
+process(XmlSerializer())    # ✅ also fine — both satisfy the Protocol
+
+# runtime check (only works with @runtime_checkable)
+print(isinstance(JsonSerializer(), Serializable))  # True</code></pre>
+    </div>
+
+    <h3>Protocol with Attributes</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from typing import Protocol
+
+class HasName(Protocol):
+    name: str      # attribute requirement
+
+class HasId(Protocol):
+    id: int
+
+class Identifiable(HasName, HasId, Protocol):
+    """Composed Protocol — combines multiple smaller ones."""
+    ...
+
+# Any class with .name: str and .id: int satisfies Identifiable
+from dataclasses import dataclass
+
+@dataclass
+class User:
+    id: int
+    name: str
+    email: str   # extra fields are fine
+
+@dataclass
+class Product:
+    id: int
+    name: str
+    price: float
+
+def display(item: Identifiable) -> str:
+    return f"[{item.id}] {item.name}"
+
+display(User(id=1, name="Vipin", email="v@e.com"))      # ✅
+display(Product(id=42, name="Widget", price=9.99))       # ✅</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. ABC vs Protocol — When to Use Each</h2>
+
+    <div class="decision-table">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr><th>Situation</th><th>Use ABC</th><th>Use Protocol</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>You own all implementations</td><td>✅ Good fit</td><td>✅ Also fine</td></tr>
+          <tr><td>Third-party classes need to satisfy the contract</td><td>❌ They can't inherit your ABC</td><td>✅ Perfect — no changes needed</td></tr>
+          <tr><td>You want shared implementation (template method pattern)</td><td>✅ ABC supports concrete methods</td><td>❌ Protocol is interface only</td></tr>
+          <tr><td>Enforced at runtime (instantiation check)</td><td>✅ TypeError if abstract methods missing</td><td>⚠️ Only with @runtime_checkable + isinstance</td></tr>
+          <tr><td>Static type checking only</td><td>✅</td><td>✅</td></tr>
+          <tr><td>Working with duck-typed ecosystem code</td><td>❌ Must inherit</td><td>✅ Works transparently</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Rule of thumb:</strong> Use <strong>Protocol</strong> for type-checking function parameters ("I need something that can be serialized"). Use <strong>ABC</strong> when you have shared behavior to provide and you control all implementations ("I need a repository with a common <code>exists()</code> method").
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Real-world: Repository Pattern with Protocol</h2>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from typing import Protocol
+from dataclasses import dataclass
+
+@dataclass
+class Task:
+    id: int
+    title: str
+    done: bool = False
+
+# Protocol — any repository implementation satisfies this
+class TaskRepository(Protocol):
+    def get(self, task_id: int) -> Task | None: ...
+    def list_all(self) -> list[Task]: ...
+    def save(self, task: Task) -> None: ...
+    def delete(self, task_id: int) -> None: ...
+
+# Implementation 1 — for production
+class SQLTaskRepository:
+    def __init__(self, db_session): self.db = db_session
+    def get(self, task_id: int) -> Task | None: ...    # SQLAlchemy query
+    def list_all(self) -> list[Task]: ...
+    def save(self, task: Task) -> None: ...
+    def delete(self, task_id: int) -> None: ...
+
+# Implementation 2 — for tests (no DB needed)
+class InMemoryTaskRepository:
+    def __init__(self): self._store: dict[int, Task] = {}
+    def get(self, task_id: int) -> Task | None:
+        return self._store.get(task_id)
+    def list_all(self) -> list[Task]:
+        return list(self._store.values())
+    def save(self, task: Task) -> None:
+        self._store[task.id] = task
+    def delete(self, task_id: int) -> None:
+        self._store.pop(task_id, None)
+
+# Service uses the Protocol — works with either implementation
+class TaskService:
+    def __init__(self, repo: TaskRepository):   # typed to Protocol
+        self.repo = repo
+
+    def complete_task(self, task_id: int) -> bool:
+        task = self.repo.get(task_id)
+        if not task:
+            return False
+        task.done = True
+        self.repo.save(task)
+        return True
+
+# In production:
+# service = TaskService(repo=SQLTaskRepository(db_session))
+
+# In tests:
+in_memory = InMemoryTaskRepository()
+service = TaskService(repo=in_memory)   # no DB needed!
+in_memory.save(Task(id=1, title="Buy milk"))
+assert service.complete_task(1) is True
+assert in_memory.get(1).done is True</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Abstract base class</div>
+        <code>class MyABC(ABC):<br>  @abstractmethod<br>  def method(self): ...</code>
+        <p>Subclasses must implement all @abstractmethod methods</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Protocol</div>
+        <code>class MyProto(Protocol):<br>  def method(self) -> str: ...</code>
+        <p>Any class with matching methods satisfies it — no inheritance needed</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Runtime checkable</div>
+        <code>@runtime_checkable<br>class MyProto(Protocol): ...</code>
+        <p>Enables isinstance() — only checks methods/attrs, not signatures</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Abstract property</div>
+        <code>@property<br>@abstractmethod<br>def name(self) -> str: ...</code>
+        <p>Both decorators required; @property first</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Abstract classmethod</div>
+        <code>@classmethod<br>@abstractmethod<br>def create(cls): ...</code>
+        <p>Forces subclasses to implement factory methods</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Composed Protocol</div>
+        <code>class Full(Proto1, Proto2, Protocol): ...</code>
+        <p>Combine smaller Protocols; must include Protocol in bases</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">ABC with shared logic</div>
+        <code>class Base(ABC):<br>  def exists(self): return self.get() is not None</code>
+        <p>Concrete methods in ABC give free implementations to subclasses</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">ABC import</div>
+        <code>from abc import ABC, abstractmethod</code>
+        <p>Both in stdlib abc module</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>ABCs enforce nominal contracts — subclasses must explicitly inherit and implement every abstract method. Python raises <code>TypeError</code> at instantiation time if they don't.</li>
+      <li>Protocols enforce structural contracts — any class with the right methods satisfies it, regardless of its class hierarchy. This is how you type-check duck-typed code.</li>
+      <li>Use Protocol when you don't control all implementations (third-party code, test doubles). Use ABC when you want to share concrete method implementations across subclasses.</li>
+      <li>The repository pattern is the canonical use case: define a <code>TaskRepository</code> Protocol, swap in <code>SQLTaskRepository</code> for production and <code>InMemoryTaskRepository</code> for tests — zero changes to service code.</li>
+      <li><code>@runtime_checkable</code> enables <code>isinstance()</code> checks against a Protocol, but it only verifies that methods/attributes exist — not their signatures. Rely on mypy/pyright for full type safety.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 44</h4>
+      <ul>
+        <li>Define an ABC for a <code>NotificationService</code> with <code>send()</code> and <code>send_bulk()</code> methods and a concrete <code>send_bulk</code> that loops over <code>send()</code></li>
+        <li>Define a Protocol for a <code>Cache</code> and implement it with both an in-memory dict and a stub that logs instead of caching</li>
+        <li>Run mypy on code that uses both and verify the type checker catches mismatches</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 44 — Metaclasses + __slots__:</strong> How does Python actually create classes? Metaclasses are the answer — classes that create other classes. We'll also cover <code>__slots__</code> for memory-efficient objects, with real benchmarks.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day42.html" class="nav-btn">← Day 42: RAG Chatbot</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day44.html" class="nav-btn">Day 44: Metaclasses →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-43-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-43-done') === 'true';
+    localStorage.setItem('day-43-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

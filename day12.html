@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 12 — Context Managers | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 12 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 12</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Context Managers</h1>
+  <p>The <code>with</code> statement guarantees cleanup — even when exceptions happen. It's Python's answer to Java's <code>try-with-resources</code>, and you can implement it for anything: files, DB connections, locks, timers, or temporary state.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>The <code>with</code> statement — what it does and why it exists</li>
+        <li>How <code>__enter__</code> and <code>__exit__</code> work under the hood</li>
+        <li>Writing a custom context manager with a class</li>
+        <li><code>contextlib.contextmanager</code> — generator-based shortcut</li>
+        <li>Real uses: file handling, DB connections, timing blocks, temporary state</li>
+        <li>Nesting and combining context managers</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>with open(...) as f:</code> → <code>try (FileReader r = new FileReader(...)) { }</code></li>
+        <li><code>__enter__</code> → <code>AutoCloseable</code> setup before the try block</li>
+        <li><code>__exit__</code> → <code>close()</code> in the implicit finally</li>
+        <li><code>@contextmanager</code> → cleaner than implementing <code>AutoCloseable</code></li>
+        <li>Exception suppression in <code>__exit__</code> → catch in finally without rethrowing</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- CONTENT: The with statement -->
+  <section>
+    <h2>The with Statement</h2>
+
+    <h3>The problem it solves</h3>
+    <p>Without <code>with</code>, you must remember to call cleanup code (<code>close()</code>, <code>release()</code>, <code>commit()</code>) even when an exception is raised. This is error-prone and verbose. The <code>with</code> statement makes cleanup automatic and guaranteed.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — try-with-resources</span>
+        <pre><code class="language-java">// Java 7+ — AutoCloseable ensures close() is called
+try (BufferedReader reader =
+        new BufferedReader(new FileReader("data.txt"))) {
+    String line;
+    while ((line = reader.readLine()) != null) {
+        System.out.println(line);
+    }
+} // reader.close() always called here</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># with guarantees __exit__ (cleanup) is called no matter what
+with open("data.txt") as f:
+    for line in f:
+        print(line.strip())
+# f.close() always called here — even if an exception occurred
+
+# The verbose equivalent without with:
+f = open("data.txt")
+try:
+    for line in f:
+        print(line.strip())
+finally:
+    f.close()   # must not forget this!</code></pre>
+      </div>
+    </div>
+
+    <h3>What with actually does</h3>
+    <p>The <code>with</code> statement calls two methods on the context manager object: <code>__enter__</code> before the block runs, and <code>__exit__</code> after — even if an exception occurs.</p>
+
+    <div class="diagram-box">
+      <span class="highlight">with</span> SomeContextManager() <span class="highlight">as</span> resource:<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="dim"># 1. SomeContextManager().__enter__() is called</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="dim"># 2. return value of __enter__ is bound to 'resource'</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;do_work(resource)<br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="dim"># 3. __exit__(exc_type, exc_val, exc_tb) is always called</span><br>
+      &nbsp;&nbsp;&nbsp;&nbsp;<span class="dim"># 4. if __exit__ returns True, exceptions are suppressed</span>
+    </div>
+  </section>
+
+  <!-- CONTENT: Class-based context manager -->
+  <section>
+    <h2>Class-Based Context Manager</h2>
+
+    <h3>Implementing __enter__ and __exit__</h3>
+    <p>Any class with <code>__enter__</code> and <code>__exit__</code> is a context manager. <code>__exit__</code> receives exception info if one occurred — return <code>True</code> to suppress the exception, <code>False</code> (or <code>None</code>) to let it propagate.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import time
+
+class Timer:
+    """Context manager that measures elapsed time."""
+
+    def __enter__(self):
+        self.start = time.perf_counter()
+        return self   # this is bound to the 'as' variable
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.elapsed = time.perf_counter() - self.start
+        print(f"Elapsed: {self.elapsed:.4f}s")
+        # Return False (or None) — don't suppress exceptions
+        return False
+
+
+with Timer() as t:
+    total = sum(range(10_000_000))
+
+print(f"Sum: {total}")
+print(f"Took: {t.elapsed:.4f}s")  # t is the Timer instance from __enter__</code></pre>
+    </div>
+
+    <h3>Handling exceptions in __exit__</h3>
+    <p><code>__exit__</code> is called with three arguments describing the exception: its type, value, and traceback. If no exception occurred, all three are <code>None</code>. Return <code>True</code> to silently swallow the exception.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Suppressor:
+    """Context manager that suppresses specific exceptions."""
+
+    def __init__(self, *exceptions):
+        self.exceptions = exceptions
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            return False   # no exception — nothing to suppress
+
+        if issubclass(exc_type, self.exceptions):
+            print(f"Suppressed {exc_type.__name__}: {exc_val}")
+            return True    # suppress — block continues after with
+
+        return False   # re-raise any other exception
+
+
+with Suppressor(ZeroDivisionError, ValueError):
+    print("Before error")
+    x = 1 / 0            # ZeroDivisionError — suppressed
+    print("Never reached")
+
+print("After with block — execution continues normally")
+
+
+# A realistic use: trying to delete a file that may not exist
+import os
+
+with Suppressor(FileNotFoundError):
+    os.remove("temp_file_that_may_not_exist.txt")</code></pre>
+    </div>
+
+    <h3>Database transaction context manager</h3>
+    <p>A classic use case — commit on success, rollback on exception:</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Transaction:
+    """Wraps a DB connection in a transaction — commit or rollback."""
+
+    def __init__(self, connection):
+        self.conn = connection
+
+    def __enter__(self):
+        self.conn.begin()
+        return self.conn   # caller gets the connection
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type is None:
+            self.conn.commit()
+            print("Transaction committed")
+        else:
+            self.conn.rollback()
+            print(f"Transaction rolled back due to {exc_type.__name__}")
+        return False   # don't suppress the exception
+
+
+# Usage (with a real DB connection):
+# with Transaction(db_conn) as conn:
+#     conn.execute("INSERT INTO users VALUES (?)", (name,))
+#     conn.execute("UPDATE accounts SET balance = ? WHERE id = ?", (amt, id))</code></pre>
+    </div>
+  </section>
+
+  <!-- CONTENT: contextmanager decorator -->
+  <section>
+    <h2>@contextmanager — Generator Shortcut</h2>
+
+    <h3>One yield, two halves</h3>
+    <p><code>contextlib.contextmanager</code> turns a generator function into a context manager. Everything before <code>yield</code> is the <code>__enter__</code> logic, the yielded value is the <code>as</code> target, and everything after <code>yield</code> is the <code>__exit__</code> logic. Much less boilerplate than a class.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — AutoCloseable class</span>
+        <pre><code class="language-java">public class Timer implements AutoCloseable {
+    private final long start;
+    private long elapsed;
+
+    public Timer() {
+        this.start = System.nanoTime();
+    }
+
+    @Override
+    public void close() {
+        elapsed = System.nanoTime() - start;
+        System.out.printf("Elapsed: %.4fs%n",
+            elapsed / 1e9);
+    }
+}
+
+try (Timer t = new Timer()) {
+    // work
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — @contextmanager</span>
+        <pre><code class="language-python">from contextlib import contextmanager
+import time
+
+@contextmanager
+def timer():
+    start = time.perf_counter()
+    try:
+        yield   # execution pauses here, block runs
+    finally:
+        elapsed = time.perf_counter() - start
+        print(f"Elapsed: {elapsed:.4f}s")
+
+
+with timer():
+    total = sum(range(10_000_000))</code></pre>
+      </div>
+    </div>
+
+    <h3>Yielding a value</h3>
+    <p>Whatever you <code>yield</code> becomes the <code>as</code> target in the <code>with</code> statement.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from contextlib import contextmanager
+import tempfile, os
+
+@contextmanager
+def temp_file(suffix: str = ".txt"):
+    """Create a temporary file, yield its path, delete on exit."""
+    path = tempfile.mktemp(suffix=suffix)
+    try:
+        yield path           # caller gets the path via 'as'
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+            print(f"Cleaned up {path}")
+
+
+with temp_file(".csv") as path:
+    with open(path, "w") as f:
+        f.write("id,name\n1,Alice\n")
+    print(f"Wrote to {path}")
+# File is deleted here, even if an exception occurred above</code></pre>
+    </div>
+
+    <h3>Exception handling in @contextmanager</h3>
+    <p>Wrap the <code>yield</code> in a <code>try/except</code> to handle or suppress exceptions from inside the <code>with</code> block.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from contextlib import contextmanager
+
+@contextmanager
+def managed_resource(name: str):
+    print(f"Acquiring {name}")
+    resource = {"name": name, "active": True}
+    try:
+        yield resource
+    except ValueError as e:
+        print(f"Handled ValueError in {name}: {e}")
+        # Don't re-raise — exception is suppressed
+    except Exception as e:
+        print(f"Unexpected error in {name}: {e}")
+        raise   # re-raise all other exceptions
+    finally:
+        resource["active"] = False
+        print(f"Released {name}")
+
+
+with managed_resource("DB Connection") as res:
+    print(f"Using: {res}")
+    raise ValueError("bad query")   # caught and suppressed above
+
+print("Execution continues here")
+# Output:
+# Acquiring DB Connection
+# Using: {'name': 'DB Connection', 'active': True}
+# Handled ValueError in DB Connection: bad query
+# Released DB Connection
+# Execution continues here</code></pre>
+    </div>
+  </section>
+
+  <!-- CONTENT: Real-world patterns -->
+  <section>
+    <h2>Real-World Patterns</h2>
+
+    <h3>Nesting and combining context managers</h3>
+    <p>You can nest <code>with</code> statements, or combine multiple context managers on one line using a comma.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Combining multiple context managers on one line (Python 3.10+)
+with open("input.txt") as src, open("output.txt", "w") as dst:
+    for line in src:
+        dst.write(line.upper())
+
+# Same as nesting:
+with open("input.txt") as src:
+    with open("output.txt", "w") as dst:
+        for line in src:
+            dst.write(line.upper())</code></pre>
+    </div>
+
+    <h3>Useful context managers from contextlib</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from contextlib import suppress, redirect_stdout, nullcontext
+import io
+
+# suppress: cleaner than try/except for "I don't care about this error"
+with suppress(FileNotFoundError):
+    os.remove("might_not_exist.txt")
+
+
+# redirect_stdout: capture print() output
+buffer = io.StringIO()
+with redirect_stdout(buffer):
+    print("This goes to the buffer, not the console")
+    print("So does this")
+
+captured = buffer.getvalue()
+print(f"Captured: {captured!r}")
+
+
+# nullcontext: useful as a no-op placeholder in conditional logic
+def process(data, lock=None):
+    ctx = lock if lock is not None else nullcontext()
+    with ctx:
+        # works whether lock is a real Lock or None
+        return [x * 2 for x in data]</code></pre>
+    </div>
+
+    <h3>Timing and profiling blocks</h3>
+    <p>A practical combination of everything learned today — a reusable, configurable timer context manager for benchmarking sections of code:</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from contextlib import contextmanager
+import time
+from typing import Optional
+
+@contextmanager
+def benchmark(label: str = "block", precision: int = 4):
+    """Time a block of code and print the result."""
+    start = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed = time.perf_counter() - start
+        print(f"[{label}] {elapsed:.{precision}f}s")
+
+
+# Usage:
+with benchmark("list comprehension"):
+    result = [x**2 for x in range(1_000_000)]
+
+with benchmark("generator sum", precision=6):
+    total = sum(x**2 for x in range(1_000_000))
+
+# Output:
+# [list comprehension] 0.0821s
+# [generator sum] 0.0634s</code></pre>
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Use a context manager</div>
+        <code>with SomeCM() as resource:</code>
+        <p><code>__enter__</code> runs before the block; <code>__exit__</code> always runs after.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Class-based CM</div>
+        <code>def __enter__(self): return self</code>
+        <p>Plus <code>def __exit__(self, exc_type, exc_val, exc_tb): return False</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Suppress exceptions</div>
+        <code>return True</code> from <code>__exit__</code>
+        <p>Returning <code>True</code> silently swallows the exception. <code>False</code>/<code>None</code> lets it propagate.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Generator-based CM</div>
+        <code>@contextmanager / def cm(): / setup; yield value; cleanup</code>
+        <p>Wrap <code>yield</code> in <code>try/finally</code> to guarantee cleanup even on exceptions.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Multiple CMs</div>
+        <code>with cm1() as a, cm2() as b:</code>
+        <p>Equivalent to nested <code>with</code> blocks. Both are cleaned up on exit.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">contextlib.suppress</div>
+        <code>with suppress(FileNotFoundError): ...</code>
+        <p>Cleaner than <code>try/except/pass</code> for "I don't care about this exception."</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">contextlib.nullcontext</div>
+        <code>with (lock or nullcontext()): ...</code>
+        <p>A no-op context manager — useful when a CM is optional.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">redirect_stdout</div>
+        <code>with redirect_stdout(buffer): print(...)</code>
+        <p>Captures <code>print()</code> output to a file-like object. From <code>contextlib</code>.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- WRAP-UP -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>The <code>with</code> statement guarantees that <code>__exit__</code> is called — no matter what happens inside the block. This makes resource cleanup reliable in a way that manual <code>try/finally</code> is not, because it's impossible to forget.</li>
+      <li>To write a class-based context manager, implement <code>__enter__</code> (setup, returns the resource) and <code>__exit__</code> (cleanup, receives exception info). Return <code>True</code> from <code>__exit__</code> only when you want to silently suppress an exception.</li>
+      <li><code>@contextmanager</code> from <code>contextlib</code> is the pragmatic choice for most custom context managers. Code before <code>yield</code> is setup; code after (in <code>finally</code>) is cleanup. It's far less boilerplate than a full class.</li>
+      <li><code>contextlib.suppress</code> replaces verbose <code>try/except/pass</code> blocks. <code>contextlib.nullcontext</code> is a no-op placeholder for optional context managers — very useful in library code.</li>
+      <li>Context managers compose naturally: comma-separate multiple managers on one <code>with</code> line, or nest them. They're the right tool for any "acquire/use/release" pattern: files, locks, DB connections, timers, temp directories.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 13</h4>
+      <ul>
+        <li>Write a <code>@contextmanager</code> called <code>change_dir(path)</code> that changes the working directory inside the block and restores it on exit — even if an exception occurs</li>
+        <li>Build a class-based <code>JSONFileLock</code> context manager that writes a <code>.lock</code> file on enter and deletes it on exit</li>
+        <li>Use <code>redirect_stdout</code> to capture the output of a function into a string and assert on it in a test</li>
+        <li>Write a <code>@contextmanager</code> that temporarily patches an environment variable and restores the original value on exit</li>
+        <li>Implement a <code>Retrying</code> context manager that re-enters its block up to N times if a specific exception is raised</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 13: Type Hints + Dataclasses</strong><br>
+      Python is dynamically typed, but type hints give your tools (IDE, mypy, pyright) the information they need to catch bugs before runtime. You'll also meet <code>@dataclass</code> — the Python equivalent of Lombok's <code>@Data</code> or Java Records — which auto-generates <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code> from field declarations.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day11.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day13.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 12;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

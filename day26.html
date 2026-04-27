@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 26 — Pandas Advanced | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 26 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 26</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>Pandas Advanced</h1>
+  <p>Beyond the basics: custom transformations with <code>apply()</code>, pivot tables, missing value handling, string column operations, and exporting to multiple formats. The tools for real data wrangling work.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><code>apply()</code> with lambda and custom functions — row-wise and element-wise transforms</li>
+        <li><code>pivot_table</code> — reshape data like a spreadsheet pivot</li>
+        <li>Handling missing values: <code>isna()</code>, <code>fillna()</code>, <code>dropna()</code></li>
+        <li>String operations on columns with the <code>.str</code> accessor</li>
+        <li>Sorting and ranking</li>
+        <li>Exporting: <code>to_csv()</code>, <code>to_excel()</code>, <code>to_json()</code></li>
+        <li>Reading from multiple file types</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>apply() — Custom Transformations</h2>
+
+    <h3>Element-wise with apply on a Series</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+df = pd.DataFrame({
+    "name":   ["Alice", "Bob", "Carol", "Dave"],
+    "salary": [95_000, 60_000, 88_000, 72_000],
+    "dept":   ["Eng", "Sales", "Eng", "HR"],
+})
+
+# apply on a Series — transform each element
+df["salary_k"] = df["salary"].apply(lambda x: f"${x/1000:.0f}k")
+
+# Custom function
+def classify_salary(s: float) -> str:
+    if s >= 90_000: return "senior"
+    if s >= 70_000: return "mid"
+    return "junior"
+
+df["band"] = df["salary"].apply(classify_salary)
+print(df[["name", "salary", "band"]])</code></pre>
+    </div>
+
+    <h3>Row-wise apply with axis=1</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+df = pd.DataFrame({
+    "q1": [100, 200, 150],
+    "q2": [120, 180, 160],
+    "q3": [110, 220, 140],
+    "q4": [130, 190, 170],
+})
+
+# Apply across each row — axis=1
+df["annual"]  = df.apply(lambda row: row.sum(), axis=1)
+df["best_q"]  = df[["q1","q2","q3","q4"]].apply(lambda r: r.idxmax(), axis=1)
+df["growth"]  = df.apply(lambda r: (r["q4"] - r["q1"]) / r["q1"] * 100, axis=1)
+
+# Vectorized is faster for simple math — use apply for complex logic
+df["annual_fast"] = df[["q1","q2","q3","q4"]].sum(axis=1)</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Performance note:</strong> <code>apply()</code> with a Python function is slow on large DataFrames — it runs row by row in Python. For arithmetic, use vectorized operations (<code>df["a"] + df["b"]</code>). Use <code>apply()</code> only for logic that can't be expressed vectorially.
+    </div>
+  </section>
+
+  <section>
+    <h2>pivot_table</h2>
+
+    <p><code>pivot_table</code> reshapes data from long to wide format — like a spreadsheet pivot. You specify which columns become rows, which become columns, and which values to aggregate.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+sales = pd.DataFrame({
+    "region":  ["North","North","South","South","East","East"],
+    "product": ["A","B","A","B","A","B"],
+    "month":   ["Jan","Jan","Jan","Jan","Jan","Jan"],
+    "revenue": [100, 200, 150, 120, 80, 300],
+    "units":   [10, 20, 15, 12, 8, 30],
+})
+
+# Pivot: regions as rows, products as columns, sum revenue
+pivot = pd.pivot_table(
+    sales,
+    values="revenue",
+    index="region",
+    columns="product",
+    aggfunc="sum",
+    fill_value=0,
+)
+print(pivot)
+# product    A    B
+# region
+# East      80  300
+# North    100  200
+# South    150  120
+
+# Multiple values and aggregations
+pivot2 = pd.pivot_table(
+    sales,
+    values=["revenue", "units"],
+    index="region",
+    columns="product",
+    aggfunc={"revenue": "sum", "units": "mean"},
+)
+
+# Margins — add row/column totals
+pivot_with_totals = pd.pivot_table(
+    sales, values="revenue", index="region",
+    columns="product", aggfunc="sum",
+    margins=True, margins_name="Total",
+)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Handling Missing Values</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+import numpy as np
+
+df = pd.DataFrame({
+    "name":   ["Alice", "Bob", None, "Dave"],
+    "score":  [92.0, np.nan, 78.0, np.nan],
+    "dept":   ["Eng", "Sales", "Eng", None],
+})
+
+# Detect missing values
+print(df.isna())         # bool DataFrame — True where NaN/None
+print(df.isna().sum())   # count per column
+print(df.isna().any())   # any missing per column?
+
+# Drop rows with any missing value
+clean = df.dropna()
+
+# Drop rows only if specific columns are missing
+clean = df.dropna(subset=["name", "score"])
+
+# Drop columns that are mostly missing
+df.dropna(axis=1, thresh=3)   # keep only cols with ≥3 non-null values
+
+# Fill missing values
+df["score"].fillna(df["score"].mean())         # fill with mean
+df["dept"].fillna("Unknown")                   # fill with constant
+df["score"].fillna(method="ffill")             # forward-fill (previous value)
+df["score"].fillna(method="bfill")             # back-fill (next value)
+
+# Interpolate — good for time series
+ts = pd.Series([1.0, np.nan, np.nan, 4.0, np.nan, 6.0])
+print(ts.interpolate())   # [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
+
+# Replace specific values
+df.replace({"dept": {"Eng": "Engineering", "HR": "Human Resources"}})
+df.replace({np.nan: 0})   # replace all NaN with 0</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>String Operations with .str</h2>
+
+    <p>The <code>.str</code> accessor exposes vectorized string methods on a Series — no loop needed. They mirror Python's built-in string methods but operate on whole columns.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+df = pd.DataFrame({
+    "name":  ["Alice Smith", "bob jones", "CAROL WHITE", " Dave Brown "],
+    "email": ["alice@eng.com", "bob@sales.com", "carol@eng.com", "dave@hr.com"],
+    "phone": ["555-1234", "555-5678", "555-9012", "555-3456"],
+})
+
+# Case operations
+df["name_clean"] = df["name"].str.strip().str.title()
+
+# Split and extract
+df["first"]  = df["name"].str.strip().str.split().str[0]
+df["domain"] = df["email"].str.split("@").str[1]
+
+# Check and filter
+mask = df["email"].str.endswith("@eng.com")
+eng_team = df[mask]
+
+# Contains — case-insensitive search
+has_smith = df["name"].str.contains("smith", case=False, na=False)
+
+# Replace with regex
+df["phone_digits"] = df["phone"].str.replace(r"\D", "", regex=True)  # "5551234"
+
+# Extract with regex — capture groups become columns
+df[["area", "number"]] = df["phone"].str.extract(r"(\d{3})-(\d{4})")
+
+# Length, pad, zfill
+df["name_len"] = df["name"].str.strip().str.len()
+df["padded"]   = df["first"].str.pad(width=10, fillchar=".")  # "Alice....."</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sorting, Ranking, and Window Functions</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+df = pd.DataFrame({
+    "name":   ["Alice","Bob","Carol","Dave","Eve"],
+    "dept":   ["Eng","Sales","Eng","HR","Sales"],
+    "salary": [95_000, 60_000, 88_000, 72_000, 65_000],
+})
+
+# Sort by one or multiple columns
+df_sorted = df.sort_values("salary", ascending=False)
+df_multi  = df.sort_values(["dept", "salary"], ascending=[True, False])
+
+# Rank — overall rank
+df["rank"] = df["salary"].rank(ascending=False).astype(int)
+
+# Rank within group — "dense" means no gaps in rank numbers
+df["dept_rank"] = df.groupby("dept")["salary"].rank(
+    ascending=False, method="dense"
+).astype(int)
+
+# Rolling window — moving average
+prices = pd.Series([10, 12, 11, 13, 15, 14, 16])
+ma3 = prices.rolling(window=3).mean()   # 3-period moving average
+print(ma3)
+# 0     NaN
+# 1     NaN
+# 2    11.0
+# 3    12.0
+# 4    13.0
+# 5    14.0
+# 6    15.0
+
+# Cumulative functions
+df["cumulative_salary"] = df["salary"].cumsum()
+df["running_max"]       = df["salary"].cummax()</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Exporting and Reading Multiple Formats</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pandas as pd
+
+df = pd.DataFrame({"a": [1,2,3], "b": [4,5,6]})
+
+# CSV — most common
+df.to_csv("output.csv", index=False)          # index=False avoids writing row numbers
+df.to_csv("output.csv", sep=";")              # semicolon delimiter
+df_back = pd.read_csv("output.csv")
+
+# JSON — several orientations
+df.to_json("output.json", orient="records", indent=2)
+# [{"a":1,"b":4},{"a":2,"b":5},...]
+df.to_json("output.json", orient="split")
+# {"columns":["a","b"],"index":[0,1,2],"data":[[1,4],[2,5],[3,6]]}
+
+# Excel — requires openpyxl: pip install openpyxl
+df.to_excel("output.xlsx", sheet_name="Data", index=False)
+df_back = pd.read_excel("output.xlsx", sheet_name="Data")
+
+# Parquet — columnar, compressed, fast — preferred for large data
+# requires: pip install pyarrow
+df.to_parquet("output.parquet", index=False)
+df_back = pd.read_parquet("output.parquet")
+
+# Multiple sheets in one Excel file
+with pd.ExcelWriter("report.xlsx") as writer:
+    df.to_excel(writer, sheet_name="Summary", index=False)
+    df.to_excel(writer, sheet_name="Detail",  index=False)</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Format guide:</strong> Use <strong>CSV</strong> for compatibility (everyone can open it). Use <strong>Parquet</strong> for large datasets — it's 5-10x smaller and reads 10x faster than CSV. Use <strong>Excel</strong> only when stakeholders need to open it directly.
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">apply on column</div>
+        <code>df["col"].apply(fn)</code>
+        <p>Transforms each element. Slower than vectorized ops — use only for complex logic.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">apply row-wise</div>
+        <code>df.apply(fn, axis=1)</code>
+        <p>Each row passed as a Series. Access columns by name: <code>row["salary"]</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">pivot_table</div>
+        <code>pd.pivot_table(df, values="rev", index="region", columns="product", aggfunc="sum")</code>
+        <p>Long → wide. Like a spreadsheet pivot. <code>margins=True</code> adds totals.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Fill NaN</div>
+        <code>df["col"].fillna(0) / .fillna(df["col"].mean())</code>
+        <p>Also: <code>fillna(method="ffill")</code> for forward-fill time series.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">String accessor</div>
+        <code>df["col"].str.lower() / .str.split("@").str[1]</code>
+        <p>All Python string methods available vectorized. Chain them.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Regex extract</div>
+        <code>df["col"].str.extract(r"(\d+)-(\d+)")</code>
+        <p>Capture groups become columns. Returns DataFrame.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Rolling window</div>
+        <code>df["price"].rolling(window=7).mean()</code>
+        <p>First N-1 values are NaN. Use <code>min_periods=1</code> to start immediately.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Export</div>
+        <code>df.to_csv("f.csv", index=False) / .to_parquet("f.parquet")</code>
+        <p>Always set <code>index=False</code> unless your index is meaningful.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>apply()</code> is the escape hatch for logic that can't be expressed vectorially. But always try the vectorized form first — arithmetic, string ops, and comparisons are all vectorized natively and 10-100x faster.</li>
+      <li><code>pivot_table</code> solves the long-to-wide reshape problem that comes up constantly in reporting. The key parameters: <code>index</code> (row labels), <code>columns</code> (column labels), <code>values</code> (what to aggregate), <code>aggfunc</code> (how to aggregate).</li>
+      <li>Always check for and handle <code>NaN</code> before aggregating or exporting. Use <code>df.isna().sum()</code> as part of your data inspection routine. Choose between <code>fillna()</code>, <code>dropna()</code>, and <code>interpolate()</code> based on whether missing data is random or patterned.</li>
+      <li>The <code>.str</code> accessor is your vectorized string toolkit. Every operation on a string column should use it — <code>df["email"].str.contains(...)</code>, not <code>df["email"].apply(lambda x: "..." in x)</code>.</li>
+      <li>Use Parquet for large datasets in production pipelines — it's columnar, compressed, and Pandas reads only the columns it needs. CSV is for human-readable interchange; Parquet is for performance.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 27</h4>
+      <ul>
+        <li>Load a CSV with at least one string column and one numeric column with missing values. Clean it: strip whitespace, fix case, fill nulls</li>
+        <li>Use <code>pivot_table</code> on a sales dataset to show revenue by month (rows) and product (columns)</li>
+        <li>Add a "days_since_last_order" column using <code>apply()</code> on a date column — then optimize it with vectorized <code>pd.Timestamp.now() - df["order_date"]</code></li>
+        <li>Use <code>.str.extract()</code> to parse email addresses into username and domain columns</li>
+        <li>Export the cleaned DataFrame to both CSV and Parquet, then read both back and verify they're equal with <code>df1.equals(df2)</code></li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 27: pytest</strong><br>
+      How do you test Python code? With pytest — no class required, just <code>assert</code> statements. You'll write fixtures (dependency injection for tests), parametrize data-driven tests, mock external services, and run a full test suite.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day25.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day27.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 26;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 32 — Pydantic | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 32 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 32</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>Pydantic</h1>
+  <p>Pydantic validates data at runtime using Python type hints. It powers FastAPI's request parsing, but it's also the right tool for config management, data transformation, and any boundary where you need guaranteed data shapes.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><code>BaseModel</code> — defining schemas with type hints</li>
+        <li><code>Field()</code> — validation constraints and metadata</li>
+        <li>Nested models and lists of models</li>
+        <li>Custom validators with <code>@field_validator</code> and <code>@model_validator</code></li>
+        <li>Computed fields with <code>@computed_field</code></li>
+        <li>Serialization: <code>model_dump()</code>, <code>model_json()</code>, aliases</li>
+        <li><code>BaseSettings</code> — typed config from env vars</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>BaseModel</code> → Bean Validation (<code>@NotNull</code>, <code>@Size</code>, etc.) on a POJO</li>
+        <li><code>Field(gt=0)</code> → <code>@Positive</code>, <code>@Min</code>, <code>@Max</code></li>
+        <li><code>@field_validator</code> → <code>@AssertTrue</code> / custom <code>ConstraintValidator</code></li>
+        <li><code>model_dump()</code> → Jackson <code>ObjectMapper.convertValue(obj, Map.class)</code></li>
+        <li><code>model_json()</code> → <code>ObjectMapper.writeValueAsString(obj)</code></li>
+        <li><code>BaseSettings</code> → Spring <code>@ConfigurationProperties</code></li>
+        <li>Field aliases → Jackson <code>@JsonProperty("snake_case")</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>BaseModel — Defining Schemas</h2>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — Bean Validation</span>
+        <pre><code class="language-java">public class CreateUserRequest {
+    @NotBlank
+    @Size(min=2, max=100)
+    private String name;
+
+    @NotNull @Email
+    private String email;
+
+    @Min(18) @Max(120)
+    private Integer age;
+
+    // getters, setters...
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — Pydantic</span>
+        <pre><code class="language-python">from pydantic import BaseModel, Field, EmailStr
+
+# pip install pydantic[email] for EmailStr
+
+class CreateUserRequest(BaseModel):
+    name:  str   = Field(min_length=2, max_length=100)
+    email: EmailStr                    # validates email format
+    age:   int   = Field(ge=18, le=120)
+
+# Pydantic validates and coerces on instantiation
+user = CreateUserRequest(name="Alice", email="alice@example.com", age=30)
+print(user.name)    # Alice
+print(user.email)   # alice@example.com (validated)
+
+# Validation errors are descriptive
+try:
+    bad = CreateUserRequest(name="A", email="not-an-email", age=15)
+except ValueError as e:
+    print(e)
+# 3 validation errors:
+#   name: String should have at least 2 characters
+#   email: value is not a valid email address
+#   age: Input should be greater than or equal to 18</code></pre>
+      </div>
+    </div>
+
+    <h3>Field() — validation constraints and metadata</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pydantic import BaseModel, Field
+from decimal import Decimal
+
+class Product(BaseModel):
+    name:        str     = Field(min_length=1, max_length=200,
+                                  description="Product display name")
+    price:       Decimal = Field(gt=0, decimal_places=2,
+                                  description="Price in USD, positive")
+    sku:         str     = Field(pattern=r"^[A-Z]{2}-\d{4}$",
+                                  examples=["AB-1234"],
+                                  description="Format: XX-0000")
+    quantity:    int     = Field(default=0, ge=0)
+    tags:        list[str] = Field(default_factory=list, max_length=10)
+    category_id: int | None = Field(default=None, gt=0)
+
+p = Product(name="Widget", price="9.99", sku="WG-0001")
+print(p.price)    # Decimal('9.99') — coerced from string
+print(p.tags)     # []  — default factory</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Nested Models</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pydantic import BaseModel, EmailStr
+from datetime import datetime
+
+class Address(BaseModel):
+    street:  str
+    city:    str
+    country: str = "US"
+    zip_code: str = Field(pattern=r"^\d{5}(-\d{4})?$")
+
+class ContactInfo(BaseModel):
+    email:   EmailStr
+    phone:   str | None = None
+    address: Address | None = None
+
+class Order(BaseModel):
+    id:          int
+    customer:    ContactInfo
+    items:       list[dict]
+    total:       float
+    created_at:  datetime
+
+# Nested models are validated recursively
+order = Order(
+    id=42,
+    customer={
+        "email": "alice@example.com",
+        "address": {
+            "street": "123 Main St",
+            "city": "Portland",
+            "zip_code": "97201",
+        },
+    },
+    items=[{"sku": "WG-0001", "qty": 2}],
+    total=19.98,
+    created_at="2024-03-15T10:30:00",   # auto-parsed to datetime
+)
+
+print(order.customer.address.city)   # Portland
+print(type(order.created_at))        # datetime</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Custom Validators</h2>
+
+    <h3>@field_validator — validate a single field</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pydantic import BaseModel, field_validator, Field
+import re
+
+class CreateUserRequest(BaseModel):
+    username:  str = Field(min_length=3, max_length=30)
+    password:  str = Field(min_length=8)
+    email:     str
+
+    @field_validator("username")
+    @classmethod
+    def username_alphanumeric(cls, v: str) -> str:
+        """Username must contain only letters, numbers, underscores."""
+        if not re.fullmatch(r"[a-z0-9_]+", v):
+            raise ValueError("Username may only contain lowercase letters, numbers, and underscores")
+        return v   # return the (possibly transformed) value
+
+    @field_validator("password")
+    @classmethod
+    def password_strong(cls, v: str) -> str:
+        """Must have at least one uppercase, one digit, one special char."""
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"\d", v):
+            raise ValueError("Password must contain at least one digit")
+        return v
+
+    @field_validator("email")
+    @classmethod
+    def email_normalise(cls, v: str) -> str:
+        """Lowercase and strip whitespace from email."""
+        return v.strip().lower()</code></pre>
+    </div>
+
+    <h3>@model_validator — cross-field validation</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pydantic import BaseModel, model_validator
+from datetime import date
+
+class DateRange(BaseModel):
+    start_date: date
+    end_date:   date
+    max_days:   int = 365
+
+    @model_validator(mode="after")
+    def end_after_start(self) -> "DateRange":
+        """Cross-field: end must be after start, within max_days."""
+        if self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        delta = (self.end_date - self.start_date).days
+        if delta > self.max_days:
+            raise ValueError(f"Date range exceeds {self.max_days} days (got {delta})")
+        return self
+
+class PasswordChange(BaseModel):
+    old_password: str
+    new_password: str
+    confirm:      str
+
+    @model_validator(mode="after")
+    def passwords_match(self) -> "PasswordChange":
+        if self.new_password != self.confirm:
+            raise ValueError("new_password and confirm do not match")
+        if self.new_password == self.old_password:
+            raise ValueError("new_password must differ from old_password")
+        return self</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Serialization and Aliases</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pydantic import BaseModel, Field, computed_field
+from datetime import datetime
+
+class UserResponse(BaseModel):
+    id:         int
+    full_name:  str = Field(serialization_alias="fullName")   # → JSON key "fullName"
+    email:      str
+    created_at: datetime
+
+    # Computed field — derived from other fields, included in output
+    @computed_field
+    @property
+    def display(self) -> str:
+        return f"{self.full_name} <{self.email}>"
+
+    model_config = {"populate_by_name": True}   # accept both field name and alias
+
+user = UserResponse(id=1, full_name="Alice Smith", email="alice@example.com",
+                    created_at=datetime.now())
+
+# model_dump — to dict
+print(user.model_dump())
+# {'id': 1, 'full_name': 'Alice Smith', 'email': ..., 'created_at': ..., 'display': ...}
+
+print(user.model_dump(by_alias=True))
+# {'id': 1, 'fullName': 'Alice Smith', ...}   — uses alias
+
+print(user.model_dump(exclude={"created_at"}))
+# exclude sensitive or internal fields
+
+# model_json — to JSON string
+print(user.model_json(by_alias=True, indent=2))
+
+# model_validate — parse from dict/JSON
+raw = {"id": 2, "full_name": "Bob", "email": "bob@ex.com", "created_at": "2024-01-01T00:00:00"}
+u2 = UserResponse.model_validate(raw)
+
+# parse from JSON string
+u3 = UserResponse.model_validate_json('{"id":3,"full_name":"Carol","email":"c@ex.com","created_at":"2024-01-01T00:00:00"}')</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>BaseSettings — Typed Config from Environment</h2>
+
+    <p><code>BaseSettings</code> is Pydantic's application config solution. Fields are populated from environment variables, <code>.env</code> files, or defaults — in that priority order. It replaces <code>os.environ.get()</code> calls scattered across your codebase with a single validated config object.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — @ConfigurationProperties</span>
+        <pre><code class="language-java">@ConfigurationProperties(prefix = "app")
+@Validated
+public class AppConfig {
+    @NotBlank
+    private String dbUrl;
+    @Min(1) @Max(100)
+    private int maxConnections = 10;
+    private boolean debug = false;
+    // getters/setters...
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — pydantic-settings</span>
+        <pre><code class="language-python"># pip install pydantic-settings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, PostgresDsn
+
+class Settings(BaseSettings):
+    # Reads from env vars: DATABASE_URL, MAX_CONNECTIONS, DEBUG, SECRET_KEY
+    database_url:    PostgresDsn = Field(description="Postgres connection string")
+    max_connections: int         = Field(default=10, ge=1, le=100)
+    debug:           bool        = False
+    secret_key:      str         = Field(min_length=32)
+    allowed_hosts:   list[str]   = ["localhost"]
+
+    # Read from .env file automatically
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,   # DATABASE_URL and database_url both work
+    )
+
+# .env file:
+# DATABASE_URL=postgresql://user:pass@localhost/mydb
+# SECRET_KEY=my-very-long-secret-key-that-is-at-least-32-chars
+# DEBUG=true
+
+from functools import lru_cache
+
+@lru_cache  # load once, reuse (singleton behaviour)
+def get_settings() -> Settings:
+    return Settings()
+
+settings = get_settings()
+print(settings.database_url)    # PostgresDsn validated
+print(settings.max_connections) # int validated
+print(settings.debug)           # bool coerced from "true"</code></pre>
+      </div>
+    </div>
+
+    <h3>Using settings in FastAPI</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from fastapi import FastAPI, Depends
+from typing import Annotated
+from config import Settings, get_settings
+
+app = FastAPI()
+SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+@app.get("/config")
+def show_config(settings: SettingsDep):
+    # Only expose non-sensitive fields
+    return {
+        "debug": settings.debug,
+        "max_connections": settings.max_connections,
+        "allowed_hosts": settings.allowed_hosts,
+    }</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Basic model</div>
+        <code>class M(BaseModel): name: str / price: float = 0.0</code>
+        <p>Validates on instantiation. Raises <code>ValidationError</code> on failure.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Field constraints</div>
+        <code>Field(gt=0, le=100, min_length=2, pattern=r"...")</code>
+        <p><code>gt/ge/lt/le</code> for numbers, <code>min_length/max_length</code> for strings.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Field validator</div>
+        <code>@field_validator("name") @classmethod def check(cls, v): return v</code>
+        <p>Must return the (possibly transformed) value. Raise <code>ValueError</code> to fail.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Model validator</div>
+        <code>@model_validator(mode="after") def check(self): return self</code>
+        <p>Receives full model — use for cross-field validation.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Computed field</div>
+        <code>@computed_field @property def full(self) -> str: return f"{self.a} {self.b}"</code>
+        <p>Derived, read-only. Included in <code>model_dump()</code> output.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Serialize</div>
+        <code>obj.model_dump() / obj.model_json()</code>
+        <p>Add <code>by_alias=True</code>, <code>exclude={"field"}</code>, <code>exclude_none=True</code> as needed.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Parse</div>
+        <code>MyModel.model_validate(dict_or_obj)</code>
+        <p>Also: <code>model_validate_json(json_str)</code> for direct JSON parsing.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Settings</div>
+        <code>class S(BaseSettings): db_url: str / model_config = SettingsConfigDict(env_file=".env")</code>
+        <p>Auto-reads from env vars and .env file. Use <code>@lru_cache</code> for singleton.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Pydantic validates at runtime, not compile time. Instantiating a model with invalid data raises a <code>ValidationError</code> immediately with structured error messages — no manual <code>if/raise</code> chains needed.</li>
+      <li><code>@field_validator</code> runs on a single field and can both validate <em>and transform</em> the value (normalise email to lowercase, strip whitespace, parse a custom format). Always return the value.</li>
+      <li><code>@model_validator(mode="after")</code> runs after all fields are validated and gives you access to the full model object — use it for cross-field rules like "end date must be after start date" or "confirm password must match password".</li>
+      <li><code>model_dump(exclude_none=True)</code> is the idiom for PATCH payloads — only include fields that were actually provided. This pairs perfectly with SQLAlchemy's partial update pattern.</li>
+      <li><code>BaseSettings</code> is a complete config solution: env vars, <code>.env</code> files, type coercion (strings → booleans, ints, lists), validation, and a typed object. It replaces every <code>os.environ.get()</code> call in your codebase.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 33</h4>
+      <ul>
+        <li>Build a <code>PaymentRequest</code> model with <code>amount</code> (positive Decimal), <code>currency</code> (3-char uppercase string), and <code>card_number</code> (16-digit string validated with a regex)</li>
+        <li>Add a <code>@model_validator</code> to a <code>SignupForm</code> that checks <code>password == confirm_password</code> and that the username doesn't contain the user's name</li>
+        <li>Create a <code>Settings</code> class with <code>BaseSettings</code> that reads <code>DATABASE_URL</code>, <code>API_KEY</code>, and <code>DEBUG</code> — write a test that sets env vars with <code>monkeypatch.setenv</code></li>
+        <li>Use <code>serialization_alias</code> on a model to serve <code>camelCase</code> JSON from <code>snake_case</code> Python fields</li>
+        <li>Explore <code>model_config = {"strict": True}</code> — observe how it stops Pydantic from coercing <code>"42"</code> to <code>int</code></li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 33: Docker + Python</strong><br>
+      Containerise your FastAPI app. You'll write a Dockerfile, build a multi-stage image to keep it small, set up a <code>docker-compose.yml</code> with Postgres, and wire environment variables from container to app via <code>BaseSettings</code>.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day31.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day33.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 32;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

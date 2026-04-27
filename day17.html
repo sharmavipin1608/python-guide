@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 17 — pathlib + os + sys | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 17 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 17</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>pathlib + os + sys</h1>
+  <p>Modern Python filesystem work uses <code>pathlib.Path</code> — an OOP approach that beats string concatenation entirely. <code>os.environ</code> and <code>sys.argv</code> handle the runtime environment your program runs in.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><code>pathlib.Path</code> — OOP filesystem paths: construction, navigation, inspection</li>
+        <li>Path operations: <code>exists</code>, <code>mkdir</code>, <code>read_text</code>, <code>write_text</code>, <code>glob</code></li>
+        <li><code>os.environ</code> — reading and writing environment variables</li>
+        <li><code>os.path</code> — legacy string-based path functions you'll encounter in older code</li>
+        <li><code>sys.argv</code> — command-line arguments</li>
+        <li><code>sys.exit</code>, <code>sys.path</code>, <code>sys.stdin/stdout/stderr</code></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>pathlib.Path</code> → <code>java.nio.file.Path</code> / <code>Paths.get()</code></li>
+        <li><code>Path.read_text()</code> → <code>Files.readString(path)</code></li>
+        <li><code>Path.write_text()</code> → <code>Files.writeString(path, content)</code></li>
+        <li><code>Path.glob("*.py")</code> → <code>Files.walk()</code> with filter</li>
+        <li><code>os.environ.get("KEY")</code> → <code>System.getenv("KEY")</code></li>
+        <li><code>sys.argv</code> → <code>String[] args</code> in <code>main(String[] args)</code></li>
+        <li><code>sys.exit(1)</code> → <code>System.exit(1)</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>pathlib.Path</h2>
+
+    <h3>Constructing and navigating paths</h3>
+    <p><code>pathlib.Path</code> represents filesystem paths as objects. The <code>/</code> operator joins path segments — no string concatenation, no <code>os.path.join()</code> needed. Paths are immutable values.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">Path base = Paths.get("/home/user/projects");
+Path src  = base.resolve("myapp").resolve("src");
+Path file = src.resolve("main.py");
+
+System.out.println(file.getFileName());  // main.py
+System.out.println(file.getParent());    // .../src
+System.out.println(file.toString());     // full path</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from pathlib import Path
+
+# Construct a path
+base = Path("/home/user/projects")
+src  = base / "myapp" / "src"     # / operator joins segments
+file = src / "main.py"
+
+print(file.name)       # main.py
+print(file.stem)       # main  (name without extension)
+print(file.suffix)     # .py
+print(file.parent)     # /home/user/projects/myapp/src
+print(file.parts)      # ('/', 'home', 'user', 'projects', 'myapp', 'src', 'main.py')
+
+# Special paths
+here     = Path(__file__).parent    # directory of the current script
+cwd      = Path.cwd()               # current working directory
+home     = Path.home()              # /home/user or C:\Users\user
+
+# Resolve — make absolute, resolve symlinks
+p = Path("../config.json").resolve()
+print(p)  # absolute path</code></pre>
+      </div>
+    </div>
+
+    <h3>Checking and inspecting paths</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pathlib import Path
+
+p = Path("config.json")
+
+p.exists()          # True/False — does it exist?
+p.is_file()         # True if it's a regular file
+p.is_dir()          # True if it's a directory
+p.stat().st_size    # file size in bytes
+p.stat().st_mtime   # last modified timestamp
+
+# Safe pattern: check before reading
+if p.exists() and p.is_file():
+    content = p.read_text()
+else:
+    content = "{}"   # default</code></pre>
+    </div>
+
+    <h3>Reading and writing</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pathlib import Path
+
+p = Path("data/output.txt")
+
+# Writing — creates the file if it doesn't exist
+p.write_text("Hello, World!\n", encoding="utf-8")
+
+# Reading
+content = p.read_text(encoding="utf-8")
+print(content)
+
+# Binary read/write
+image = Path("photo.jpg").read_bytes()
+Path("copy.jpg").write_bytes(image)
+
+# Append — pathlib has no built-in append; use open()
+with p.open("a") as f:
+    f.write("Appended line\n")</code></pre>
+    </div>
+
+    <h3>Creating directories and listing files</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pathlib import Path
+
+# Create directories
+Path("logs/2024/jan").mkdir(parents=True, exist_ok=True)
+# parents=True  — create all intermediate dirs (like mkdir -p)
+# exist_ok=True — don't raise if already exists
+
+# List directory contents
+p = Path("src")
+for child in p.iterdir():
+    print(child.name, "dir" if child.is_dir() else "file")
+
+# glob — find files matching a pattern
+py_files = list(Path("src").glob("*.py"))          # direct children
+all_py   = list(Path("src").rglob("*.py"))         # recursive
+configs  = list(Path(".").glob("**/*.json"))        # same as rglob
+
+# Practical: find all Python files and count lines
+total_lines = sum(
+    len(f.read_text().splitlines())
+    for f in Path("src").rglob("*.py")
+    if f.is_file()
+)
+print(f"Total lines: {total_lines}")</code></pre>
+    </div>
+
+    <h3>Renaming, moving, and deleting</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from pathlib import Path
+
+p = Path("old_name.txt")
+p.write_text("content")
+
+# Rename (move within same filesystem)
+new_p = p.rename("new_name.txt")
+
+# Move to different location
+import shutil
+shutil.move("new_name.txt", "archive/new_name.txt")
+
+# Copy
+shutil.copy2("source.txt", "destination.txt")   # preserves metadata
+
+# Delete
+Path("temp.txt").unlink(missing_ok=True)   # missing_ok: no error if absent
+Path("empty_dir").rmdir()                  # only works on empty dirs
+shutil.rmtree("full_dir")                  # remove tree recursively</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>os.environ — Environment Variables</h2>
+
+    <p>Environment variables are the standard way to configure applications without hardcoding values. Python exposes them through <code>os.environ</code>, a dict-like object.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">String host = System.getenv("DB_HOST");
+String port = System.getenv().getOrDefault("DB_PORT", "5432");
+
+if (host == null) {
+    throw new IllegalStateException("DB_HOST not set");
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import os
+
+# Read — returns None if missing (like getenv in C)
+host = os.environ.get("DB_HOST")
+
+# Read with default
+port = os.environ.get("DB_PORT", "5432")
+
+# Read required — raises KeyError if missing
+secret = os.environ["SECRET_KEY"]   # KeyError if not set
+
+# Set (only affects current process, not parent shell)
+os.environ["MY_VAR"] = "value"
+
+# Check all env vars
+for key, value in os.environ.items():
+    print(f"{key}={value}")
+
+# Delete
+del os.environ["MY_VAR"]
+os.environ.pop("MY_VAR", None)   # safe delete with default</code></pre>
+      </div>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Best practice:</strong> Use <code>python-dotenv</code> (Day 34) to load a <code>.env</code> file into <code>os.environ</code> for local development. For production, set env vars in your deployment platform (Docker, Kubernetes, cloud provider). Never hardcode secrets in source code.
+    </div>
+  </section>
+
+  <section>
+    <h2>sys — Runtime System Interface</h2>
+
+    <h3>sys.argv — command-line arguments</h3>
+    <p><code>sys.argv</code> is a list of strings: <code>sys.argv[0]</code> is always the script name, and subsequent elements are the arguments passed. For complex CLIs, use <code>argparse</code> or <code>click</code> (Day 47) instead of parsing <code>sys.argv</code> manually.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import sys
+
+# Running: python script.py input.txt --verbose 42
+# sys.argv == ['script.py', 'input.txt', '--verbose', '42']
+
+script_name = sys.argv[0]       # 'script.py'
+args        = sys.argv[1:]      # ['input.txt', '--verbose', '42']
+
+if len(sys.argv) < 2:
+    print(f"Usage: {script_name} <input_file>")
+    sys.exit(1)   # non-zero exit code = error
+
+input_file = sys.argv[1]
+verbose    = "--verbose" in sys.argv
+
+# Simple manual parsing
+def parse_args() -> dict:
+    args = sys.argv[1:]
+    result = {"files": [], "verbose": False}
+    i = 0
+    while i < len(args):
+        if args[i] == "--verbose":
+            result["verbose"] = True
+        else:
+            result["files"].append(args[i])
+        i += 1
+    return result</code></pre>
+    </div>
+
+    <h3>sys.exit, sys.path, sys.stdin/stdout</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import sys
+
+# sys.exit — exit with a status code
+# 0 = success, non-zero = error (convention)
+sys.exit(0)     # clean exit
+sys.exit(1)     # error exit
+sys.exit("Error: file not found")  # string → printed to stderr, exit 1
+
+# sys.path — where Python looks for modules
+print(sys.path)
+sys.path.insert(0, "/path/to/my/lib")   # add custom module location
+
+# sys.stdin / stdout / stderr — file objects for standard streams
+# Write to stderr (errors/warnings shouldn't pollute stdout)
+print("Error: something went wrong", file=sys.stderr)
+sys.stderr.write("Warning: deprecated\n")
+
+# Read from stdin (e.g. piped input)
+for line in sys.stdin:
+    print(line.upper(), end="")
+
+# Platform info
+print(sys.platform)   # 'linux', 'darwin', 'win32'
+print(sys.version)    # '3.12.0 (main, ...)'</code></pre>
+    </div>
+
+    <h3>os.path — legacy path operations</h3>
+    <p>You'll see <code>os.path</code> in older code. Know what it does; prefer <code>pathlib</code> in new code.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import os.path
+
+# os.path equivalents (all superseded by pathlib)
+os.path.join("/home/user", "projects", "app.py")   # Path("/home/user") / "projects" / "app.py"
+os.path.exists("config.json")                       # Path("config.json").exists()
+os.path.basename("/home/user/file.txt")             # Path(...).name
+os.path.dirname("/home/user/file.txt")              # Path(...).parent
+os.path.splitext("file.txt")                        # Path(...).stem, Path(...).suffix
+os.path.isfile("file.txt")                          # Path(...).is_file()
+os.path.isdir("dir")                                # Path(...).is_dir()
+os.path.abspath("../config")                        # Path("../config").resolve()</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Construct path</div>
+        <code>Path("/base") / "sub" / "file.txt"</code>
+        <p>Use <code>/</code> to join segments. Works on all platforms.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Path components</div>
+        <code>p.name / p.stem / p.suffix / p.parent</code>
+        <p><code>name</code>=filename, <code>stem</code>=no ext, <code>suffix</code>=ext, <code>parent</code>=dir</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Read / write text</div>
+        <code>p.read_text() / p.write_text("...")</code>
+        <p>One-liner file I/O. Add <code>encoding="utf-8"</code> explicitly.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Create dirs</div>
+        <code>Path("a/b/c").mkdir(parents=True, exist_ok=True)</code>
+        <p>Equivalent to <code>mkdir -p</code>. Safe to call repeatedly.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Find files</div>
+        <code>Path(".").glob("**/*.py")</code>
+        <p>Recursive glob. Returns a lazy iterator of Path objects.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Env var with default</div>
+        <code>os.environ.get("KEY", "default")</code>
+        <p>Never raises. Use <code>os.environ["KEY"]</code> when the var is required.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">CLI args</div>
+        <code>sys.argv[1:]</code>
+        <p><code>sys.argv[0]</code> is the script name. Rest are the user's arguments.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Error exit</div>
+        <code>sys.exit(1)</code>
+        <p>0 = success, non-zero = error. Checked by shells and CI systems.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>pathlib.Path</code> is the modern way to work with files. Use the <code>/</code> operator to join segments instead of <code>os.path.join()</code>. Use <code>read_text()</code>/<code>write_text()</code> for simple file I/O instead of <code>open()</code>/<code>read()</code>/<code>close()</code>.</li>
+      <li>Always use <code>Path(__file__).parent</code> to get the directory of the current script — never assume the working directory is where your script lives.</li>
+      <li><code>os.environ.get("KEY", "default")</code> for optional config, <code>os.environ["KEY"]</code> for required config that should fail loudly if missing. Never hardcode secrets in code.</li>
+      <li><code>sys.argv[1:]</code> for simple scripts. For anything with more than two arguments, use <code>argparse</code> (stdlib) or <code>click</code> (third-party, Day 47) — manual parsing of <code>sys.argv</code> doesn't scale.</li>
+      <li>Write errors to <code>sys.stderr</code> and set a non-zero exit code with <code>sys.exit(1)</code>. This makes your script composable in shell pipelines and CI systems — the same contract as any Unix command.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 18</h4>
+      <ul>
+        <li>Write a script that takes a directory path from <code>sys.argv</code>, walks it recursively with <code>rglob("*")</code>, and prints a tree-like structure with file sizes</li>
+        <li>Build a <code>find_large_files(directory, min_mb)</code> function using <code>pathlib</code> that returns all files over the size threshold</li>
+        <li>Create a script that reads a <code>DATABASE_URL</code> env var, parses it, and prints the host, port, and database name separately</li>
+        <li>Write a <code>safe_mkdir(path)</code> utility that creates a directory only if it doesn't exist and logs the action to <code>sys.stderr</code></li>
+        <li>Use <code>Path.glob()</code> to find all <code>.log</code> files older than 7 days (use <code>stat().st_mtime</code>) and list them with their sizes</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 18: datetime + json</strong><br>
+      You'll handle two of the most common serialization challenges in backend development: working with dates and times (with timezone awareness), and converting Python objects to/from JSON — including the custom encoder pattern for non-serializable types.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day16.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day18.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 17;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

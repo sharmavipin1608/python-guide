@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 50 — Advanced Testing | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 50 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 50</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Advanced Testing</h1>
+  <p>pytest-asyncio for async code, httpx AsyncClient as a FastAPI test client, Testcontainers for real Postgres and Redis in tests, pytest-cov coverage reports, and factories for complex test data.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>pytest-asyncio — testing async functions and routes <span style="color:#555">~20 min</span></li>
+        <li>httpx AsyncClient as FastAPI test client <span style="color:#555">~15 min</span></li>
+        <li>Testcontainers — real Postgres/Redis in tests <span style="color:#555">~20 min</span></li>
+        <li>pytest-cov coverage reports <span style="color:#555">~10 min</span></li>
+        <li>Factories and fixtures for complex test data <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>pytest-asyncio</strong> → no direct equivalent; JUnit 5's async support is limited</li>
+        <li><strong>httpx AsyncClient</strong> → MockMvc / WebTestClient in Spring</li>
+        <li><strong>Testcontainers</strong> → Testcontainers for Java — same concept, same Docker images</li>
+        <li><strong>pytest-cov + coverage.xml</strong> → JaCoCo — coverage reports in CI</li>
+        <li><strong>factory-boy</strong> → Test data builders / Faker in Java</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. pytest-asyncio</h2>
+    <p>Python's standard <code>pytest</code> doesn't know how to run <code>async def</code> test functions. <code>pytest-asyncio</code> bridges this gap — essential when testing FastAPI, asyncio services, or any async code.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install pytest-asyncio
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">pytest.ini / pyproject.toml</span>
+      <pre><code class="language-toml">[tool.pytest.ini_options]
+asyncio_mode = "auto"   # automatically handle async test functions</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — async tests</span>
+      <pre><code class="language-python">import asyncio
+import pytest
+import pytest_asyncio
+
+# With asyncio_mode = "auto", just write async def test_*
+async def test_async_function():
+    result = await some_coroutine()
+    assert result == "expected"
+
+# Async fixtures
+@pytest_asyncio.fixture
+async def async_client():
+    async with httpx.AsyncClient() as client:
+        yield client
+    # cleanup happens after each test
+
+async def test_with_async_fixture(async_client):
+    response = await async_client.get("https://httpbin.org/get")
+    assert response.status_code == 200
+
+# Testing asyncio.gather behaviour
+async def test_concurrent_tasks():
+    async def slow_op(n: int) -> int:
+        await asyncio.sleep(0.01)
+        return n * 2
+
+    results = await asyncio.gather(slow_op(1), slow_op(2), slow_op(3))
+    assert results == [2, 4, 6]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. httpx AsyncClient as FastAPI Test Client</h2>
+    <p>FastAPI's <code>TestClient</code> is synchronous (blocks the event loop). For testing async routes properly — especially SSE streaming or WebSocket endpoints — use <code>httpx.AsyncClient</code> with <code>transport=ASGITransport</code>.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install httpx pytest-asyncio
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — conftest.py</span>
+      <pre><code class="language-python">import pytest
+import pytest_asyncio
+import httpx
+from httpx import AsyncClient, ASGITransport
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
+from main import app
+from database import Base, get_db
+
+TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
+
+@pytest_asyncio.fixture(scope="session")
+async def engine():
+    engine = create_async_engine(TEST_DB_URL)
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield engine
+    await engine.dispose()
+
+@pytest_asyncio.fixture
+async def db(engine):
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        yield session
+        await session.rollback()   # clean state after each test
+
+@pytest_asyncio.fixture
+async def client(db):
+    async def override_get_db():
+        yield db
+    app.dependency_overrides[get_db] = override_get_db
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as ac:
+        yield ac
+    app.dependency_overrides.clear()</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — async route tests</span>
+      <pre><code class="language-python">async def test_create_task(client: AsyncClient):
+    response = await client.post("/tasks/", json={"title": "Buy milk"})
+    assert response.status_code == 201
+    data = response.json()
+    assert data["title"] == "Buy milk"
+
+async def test_list_tasks(client: AsyncClient):
+    await client.post("/tasks/", json={"title": "Task A"})
+    await client.post("/tasks/", json={"title": "Task B"})
+    response = await client.get("/tasks/")
+    assert response.status_code == 200
+    assert len(response.json()) >= 2
+
+async def test_streaming_endpoint(client: AsyncClient):
+    """Test SSE streaming — collect all chunks."""
+    chunks = []
+    async with client.stream("GET", "/chat/stream?prompt=hello") as response:
+        async for line in response.aiter_lines():
+            if line.startswith("data: ") and line != "data: [DONE]":
+                chunks.append(line[6:])   # strip "data: " prefix
+    assert len(chunks) > 0
+    assert "".join(chunks)  # non-empty response</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Testcontainers — Real DB in Tests</h2>
+    <p>Testcontainers spins up real Docker containers for your tests — actual Postgres, actual Redis. Tests hit a real database with real SQL, catching issues that SQLite-in-memory never would.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install testcontainers
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — Postgres Testcontainer</span>
+      <pre><code class="language-python">import pytest
+from testcontainers.postgres import PostgresContainer
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+from database import Base
+
+@pytest.fixture(scope="session")
+def postgres():
+    """Start a real Postgres container for the test session."""
+    with PostgresContainer("postgres:16-alpine") as pg:
+        yield pg   # container is running; pg.get_connection_url() gives the DSN
+
+@pytest.fixture(scope="session")
+def engine(postgres):
+    engine = create_engine(postgres.get_connection_url())
+    Base.metadata.create_all(bind=engine)
+    yield engine
+    Base.metadata.drop_all(bind=engine)
+    engine.dispose()
+
+@pytest.fixture
+def db(engine):
+    connection = engine.connect()
+    transaction = connection.begin()
+    Session = sessionmaker(bind=connection)
+    session = Session()
+    yield session
+    session.close()
+    transaction.rollback()   # undo test changes
+    connection.close()
+
+def test_real_postgres(db):
+    """This test hits a real Postgres instance."""
+    result = db.execute(text("SELECT version()")).scalar()
+    assert "PostgreSQL" in result</code></pre>
+    </div>
+
+    <h3>Redis Testcontainer</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pytest
+import redis
+from testcontainers.redis import RedisContainer
+
+@pytest.fixture(scope="session")
+def redis_container():
+    with RedisContainer("redis:7-alpine") as rc:
+        yield rc
+
+@pytest.fixture
+def redis_client(redis_container):
+    client = redis.Redis(
+        host=redis_container.get_container_host_ip(),
+        port=redis_container.get_exposed_port(6379),
+    )
+    yield client
+    client.flushall()   # clean state after each test
+
+def test_cache_set_get(redis_client):
+    redis_client.set("key", "value", ex=60)
+    assert redis_client.get("key") == b"value"</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. pytest-cov Coverage Reports</h2>
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install pytest-cov
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span># Terminal report with missing lines<br>
+      <span class="prompt">$ </span>pytest --cov=mypackage --cov-report=term-missing<br>
+      <br>
+      <span class="prompt">$ </span># HTML report — open htmlcov/index.html in browser<br>
+      <span class="prompt">$ </span>pytest --cov=mypackage --cov-report=html<br>
+      <br>
+      <span class="prompt">$ </span># XML report for CI (Codecov, SonarQube)<br>
+      <span class="prompt">$ </span>pytest --cov=mypackage --cov-report=xml<br>
+      <br>
+      <span class="prompt">$ </span># Fail if coverage drops below threshold<br>
+      <span class="prompt">$ </span>pytest --cov=mypackage --cov-fail-under=80
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">pyproject.toml — coverage config</span>
+      <pre><code class="language-toml">[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@abstractmethod",
+]
+fail_under = 80</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Factories for Test Data</h2>
+    <p>Hardcoding test data in every test creates brittle tests. Factories produce realistic objects with sensible defaults that can be overridden per test.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install factory-boy
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — factory_boy</span>
+      <pre><code class="language-python">import factory
+from factory.alchemy import SQLAlchemyModelFactory
+from models import Task, TaskStatus
+from database import SessionLocal
+
+class TaskFactory(SQLAlchemyModelFactory):
+    class Meta:
+        model = Task
+        sqlalchemy_session = SessionLocal()
+        sqlalchemy_session_persistence = "commit"
+
+    title = factory.Sequence(lambda n: f"Task {n}")
+    description = factory.Faker("sentence")
+    status = TaskStatus.PENDING
+
+# In tests:
+def test_factory_creates_task(db):
+    TaskFactory._meta.sqlalchemy_session = db
+    task = TaskFactory()
+    assert task.id is not None
+    assert task.title.startswith("Task")
+
+def test_multiple_tasks(db):
+    TaskFactory._meta.sqlalchemy_session = db
+    tasks = TaskFactory.create_batch(5, status=TaskStatus.DONE)
+    assert len(tasks) == 5
+    assert all(t.status == TaskStatus.DONE for t in tasks)</code></pre>
+    </div>
+
+    <h3>Lightweight Fixture Factories (No Library Needed)</h3>
+    <div class="python-block">
+      <span class="block-label">Python — simple fixture factory</span>
+      <pre><code class="language-python">import pytest
+from tasklib.models import Task, Priority, Status
+
+@pytest.fixture
+def make_task():
+    """Factory fixture — call with overrides per test."""
+    _counter = {"n": 0}
+
+    def _factory(
+        title: str | None = None,
+        priority: Priority = Priority.MEDIUM,
+        status: Status = Status.PENDING,
+    ) -> Task:
+        _counter["n"] += 1
+        return Task(
+            id=_counter["n"],
+            title=title or f"Task {_counter['n']}",
+            priority=priority,
+            status=status,
+        )
+    return _factory
+
+# In tests:
+def test_high_priority_filter(make_task):
+    t1 = make_task(priority=Priority.HIGH)
+    t2 = make_task(priority=Priority.LOW)
+    high = [t for t in [t1, t2] if t.priority == Priority.HIGH]
+    assert len(high) == 1
+    assert high[0] is t1</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Auto async mode</div>
+        <code>asyncio_mode = "auto" in pyproject.toml</code>
+        <p>No @pytest.mark.asyncio needed on each test</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Async fixture</div>
+        <code>@pytest_asyncio.fixture<br>async def my_fixture(): ...</code>
+        <p>Use pytest_asyncio.fixture, not plain pytest.fixture for async</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">FastAPI async client</div>
+        <code>AsyncClient(transport=ASGITransport(app=app), base_url="http://test")</code>
+        <p>Tests async routes without a real server</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Testcontainer Postgres</div>
+        <code>with PostgresContainer("postgres:16-alpine") as pg: ...</code>
+        <p>Starts real Docker container; pg.get_connection_url() for DSN</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Coverage with threshold</div>
+        <code>pytest --cov=pkg --cov-fail-under=80</code>
+        <p>Non-zero exit code if coverage drops below 80%</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">HTML coverage</div>
+        <code>pytest --cov=pkg --cov-report=html</code>
+        <p>Open htmlcov/index.html for line-by-line coverage view</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Exclude from coverage</div>
+        <code># pragma: no cover</code>
+        <p>Inline comment to exclude a line or block from coverage</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Factory fixture</div>
+        <code>@pytest.fixture<br>def make_task():<br>  def _f(**kw): return Task(**kw)<br>  return _f</code>
+        <p>Returns a callable — tests create objects with overrides</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Set <code>asyncio_mode = "auto"</code> in pyproject.toml. Writing <code>@pytest.mark.asyncio</code> on every async test is mechanical noise — auto mode eliminates it project-wide.</li>
+      <li>Use <code>httpx.AsyncClient</code> with <code>ASGITransport</code> instead of FastAPI's <code>TestClient</code> when you need to test async behaviour properly — streaming, WebSockets, or background tasks that schedule coroutines.</li>
+      <li>Testcontainers tests are slower (Docker startup) but catch real bugs — constraint violations, index behaviour, isolation level issues — that SQLite-in-memory cannot. Run them in CI; skip in pre-commit hooks.</li>
+      <li>Coverage is a tool, not a goal. 80% meaningful coverage beats 100% coverage of trivial getters. Configure <code>exclude_lines</code> to skip <code>@abstractmethod</code>, <code>TYPE_CHECKING</code> blocks, and <code>raise NotImplementedError</code>.</li>
+      <li>Factory fixtures are better than hardcoded test data. A <code>make_task()</code> fixture lets each test say exactly what varies — everything else gets a sensible default.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 51</h4>
+      <ul>
+        <li>Add pytest-asyncio to the Day 35 project and convert the test client to httpx AsyncClient</li>
+        <li>Replace the SQLite test fixture with a Testcontainers Postgres fixture and verify the tests still pass</li>
+        <li>Run coverage and identify 3 untested branches; write tests for them</li>
+        <li>Add a <code>make_task</code> factory fixture and refactor tests to use it</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 51 — CI/CD for Python:</strong> GitHub Actions workflow that lints with ruff, type-checks with mypy, runs pytest with coverage, and builds + pushes a Docker image on merge to main.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day49.html" class="nav-btn">← Day 49: Package a Library</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day51.html" class="nav-btn">Day 51: CI/CD →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-50-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-50-done') === 'true';
+    localStorage.setItem('day-50-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

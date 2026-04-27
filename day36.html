@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 36 — LangChain Basics | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 36 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 36</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>LangChain Basics</h1>
+  <p>LangChain is the Spring Boot of AI application development — it provides the plumbing for connecting LLMs to prompts, data, and tools. Today: the core primitives that every LangChain app uses.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>What LangChain is and when to use it <span style="color:#555">~10 min</span></li>
+        <li>LLM wrappers — OpenAI and Ollama <span style="color:#555">~15 min</span></li>
+        <li>Prompt templates — parameterized prompts <span style="color:#555">~15 min</span></li>
+        <li>Chains — composing LLM calls with LCEL <span style="color:#555">~20 min</span></li>
+        <li>Output parsers — structured data from LLM responses <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>LangChain</strong> → Spring AI (or think of LangChain as Spring Boot for AI workflows)</li>
+        <li><strong>ChatOpenAI / OllamaLLM</strong> → RestTemplate configured for a specific service</li>
+        <li><strong>PromptTemplate</strong> → a parameterized SQL query or message template</li>
+        <li><strong>LCEL pipe operator |</strong> → method chaining / Builder pattern</li>
+        <li><strong>OutputParser</strong> → a Jackson deserializer for LLM responses</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- WHAT IS LANGCHAIN -->
+  <section>
+    <h2>1. What Is LangChain?</h2>
+    <p>LangChain is a framework for building applications powered by large language models. It provides abstractions for the common patterns: prompting, chaining multiple LLM calls, connecting to external data, and giving LLMs tools to use.</p>
+
+    <div class="callout-teal">
+      <strong>When to use LangChain:</strong> Use it when you need more than a single LLM call — RAG pipelines, agent loops, multi-step reasoning, or routing between different models. For a simple "call GPT, return the result" use case, the raw OpenAI SDK (Day 39) is simpler.
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install langchain langchain-openai langchain-ollama<br>
+      <span class="prompt">$ </span># Set your API key<br>
+      <span class="prompt">$ </span>export OPENAI_API_KEY=sk-...
+    </div>
+  </section>
+
+  <!-- LLM WRAPPERS -->
+  <section>
+    <h2>2. LLM Wrappers</h2>
+    <p>LangChain wraps different LLM providers behind a consistent interface. Swap out OpenAI for Ollama (local) or Anthropic without changing the rest of your code.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — OpenAI</span>
+      <pre><code class="language-python">from langchain_openai import ChatOpenAI
+
+# Chat model (GPT-4o, GPT-4, etc.)
+llm = ChatOpenAI(
+    model="gpt-4o-mini",
+    temperature=0,          # 0 = deterministic, 1 = creative
+    max_tokens=500,
+)
+
+# Simple invocation
+response = llm.invoke("What is the GIL in Python?")
+print(response.content)     # AIMessage → .content for the text</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — Ollama (local models)</span>
+      <pre><code class="language-python">from langchain_ollama import ChatOllama
+
+# Runs against your local Ollama instance (ollama pull llama3.2)
+llm = ChatOllama(
+    model="llama3.2",
+    temperature=0,
+)
+
+response = llm.invoke("Explain Python generators in one paragraph.")
+print(response.content)
+
+# Same interface — just swap the LLM object, everything else stays identical</code></pre>
+    </div>
+
+    <h3>Message Types</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+
+# Build a conversation manually
+messages = [
+    SystemMessage(content="You are a Python expert helping a Java developer."),
+    HumanMessage(content="What's the equivalent of HashMap in Python?"),
+]
+
+response = llm.invoke(messages)
+print(response.content)      # "The equivalent of HashMap in Python is a dict..."
+
+# Continue the conversation
+messages.append(response)    # append the AIMessage
+messages.append(HumanMessage(content="And what about TreeMap?"))
+response2 = llm.invoke(messages)</code></pre>
+    </div>
+  </section>
+
+  <!-- PROMPT TEMPLATES -->
+  <section>
+    <h2>3. Prompt Templates</h2>
+    <p>A PromptTemplate is a reusable prompt with placeholders — like a parameterized SQL query. It keeps prompt text out of your business logic and makes prompts testable.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_core.prompts import ChatPromptTemplate
+
+# Define template with {placeholders}
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a Python expert. Explain concepts clearly with Java parallels."),
+    ("human", "Explain {concept} in Python. Compare it to {java_equivalent} in Java."),
+])
+
+# Format the prompt — produces a list of messages
+messages = prompt.format_messages(
+    concept="decorators",
+    java_equivalent="AOP @Around advice",
+)
+print(messages[1].content)
+# "Explain decorators in Python. Compare it to AOP @Around advice in Java."
+
+# Invoke directly
+response = llm.invoke(messages)</code></pre>
+    </div>
+
+    <h3>Few-Shot Prompting</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_core.prompts import FewShotChatMessagePromptTemplate
+
+examples = [
+    {"input": "HashMap", "output": "dict"},
+    {"input": "ArrayList", "output": "list"},
+    {"input": "Optional<String>", "output": "str | None"},
+]
+
+example_prompt = ChatPromptTemplate.from_messages([
+    ("human", "Java: {input}"),
+    ("ai", "Python: {output}"),
+])
+
+few_shot_prompt = FewShotChatMessagePromptTemplate(
+    examples=examples,
+    example_prompt=example_prompt,
+)
+
+final_prompt = ChatPromptTemplate.from_messages([
+    ("system", "Convert Java types to Python equivalents."),
+    few_shot_prompt,
+    ("human", "Java: {input}"),
+])
+
+chain = final_prompt | llm
+response = chain.invoke({"input": "Set<String>"})
+print(response.content)    # "Python: set[str]"</code></pre>
+    </div>
+  </section>
+
+  <!-- LCEL CHAINS -->
+  <section>
+    <h2>4. Chains with LCEL</h2>
+    <p>LangChain Expression Language (LCEL) uses the pipe operator <code>|</code> to compose steps. Each step's output becomes the next step's input — like a Unix pipeline or Java stream operations.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — basic chain</span>
+      <pre><code class="language-python">from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+# prompt | llm | parser — each | passes output to the next step
+chain = (
+    ChatPromptTemplate.from_template(
+        "Summarize this Python concept for a Java developer: {concept}"
+    )
+    | llm
+    | StrOutputParser()     # extracts .content string from AIMessage
+)
+
+result = chain.invoke({"concept": "context managers"})
+print(result)  # plain string, not AIMessage</code></pre>
+    </div>
+
+    <h3>Sequential Chain</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_core.runnables import RunnablePassthrough
+
+# Step 1: generate a Python code snippet
+code_prompt = ChatPromptTemplate.from_template(
+    "Write a short Python example of {concept}. Code only, no explanation."
+)
+
+# Step 2: review that code
+review_prompt = ChatPromptTemplate.from_template(
+    "Review this Python code and list any issues:\n\n{code}"
+)
+
+parser = StrOutputParser()
+
+# Chain: generate code, then review it
+generate_chain = code_prompt | llm | parser
+
+review_chain = (
+    {"code": generate_chain}       # pass generated code as 'code' key
+    | review_prompt
+    | llm
+    | parser
+)
+
+result = review_chain.invoke({"concept": "async generators"})
+print(result)</code></pre>
+    </div>
+
+    <h3>Streaming</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Stream tokens as they arrive — important for long responses
+chain = (
+    ChatPromptTemplate.from_template("Explain {topic} in detail.")
+    | llm
+    | StrOutputParser()
+)
+
+for chunk in chain.stream({"topic": "Python's GIL"}):
+    print(chunk, end="", flush=True)    # print each token as it arrives
+print()  # newline at end</code></pre>
+    </div>
+  </section>
+
+  <!-- OUTPUT PARSERS -->
+  <section>
+    <h2>5. Output Parsers</h2>
+    <p>LLMs return text. Output parsers turn that text into structured Python objects — a critical step when you need the result to drive further logic.</p>
+
+    <h3>Pydantic Output Parser</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel, Field
+
+class CodeReview(BaseModel):
+    issues: list[str] = Field(description="List of issues found in the code")
+    severity: str = Field(description="overall severity: low, medium, or high")
+    suggestion: str = Field(description="One-sentence improvement suggestion")
+
+parser = PydanticOutputParser(pydantic_object=CodeReview)
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a code reviewer. Respond in the requested format."),
+    ("human", "Review this code:\n\n{code}\n\n{format_instructions}"),
+]).partial(format_instructions=parser.get_format_instructions())
+
+chain = prompt | llm | parser
+
+result = chain.invoke({"code": "def add(a, b): return a+b"})
+print(result.issues)      # ['No type hints', 'No docstring']
+print(result.severity)    # 'low'
+print(type(result))       # <class 'CodeReview'></code></pre>
+    </div>
+
+    <h3>JSON Output Parser</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from langchain_core.output_parsers import JsonOutputParser
+
+# Use with_structured_output for cleaner JSON (OpenAI function calling)
+llm_json = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+class TaskExtraction(BaseModel):
+    title: str
+    priority: str
+    due_date: str | None
+
+structured_llm = llm_json.with_structured_output(TaskExtraction)
+
+result = structured_llm.invoke(
+    "Extract task info: 'Finish the API by Friday, it's urgent'"
+)
+print(result.title)      # "Finish the API"
+print(result.priority)   # "high"
+print(result.due_date)   # "Friday"</code></pre>
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">OpenAI chat model</div>
+        <code>ChatOpenAI(model="gpt-4o-mini", temperature=0)</code>
+        <p>temperature=0 for consistent outputs; higher for creativity</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Ollama local model</div>
+        <code>ChatOllama(model="llama3.2")</code>
+        <p>Same interface as ChatOpenAI — swap freely</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Prompt template</div>
+        <code>ChatPromptTemplate.from_template("Explain {concept}")</code>
+        <p>Use {placeholders} for dynamic values</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">LCEL chain</div>
+        <code>chain = prompt | llm | StrOutputParser()</code>
+        <p>Pipe operator composes steps left to right</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Invoke chain</div>
+        <code>chain.invoke({"concept": "decorators"})</code>
+        <p>Pass a dict matching the template's placeholder keys</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Stream chain</div>
+        <code>for chunk in chain.stream(inputs): print(chunk, end="")</code>
+        <p>Stream tokens as they arrive — better UX for long responses</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">String output</div>
+        <code>StrOutputParser()</code>
+        <p>Extracts .content string from AIMessage</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Structured output</div>
+        <code>llm.with_structured_output(MyModel)</code>
+        <p>Returns a Pydantic model instance instead of text</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">System message</div>
+        <code>("system", "You are a Python expert...")</code>
+        <p>Sets persona/instructions for the LLM</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- WRAP UP -->
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>LangChain's LLM wrappers (<code>ChatOpenAI</code>, <code>ChatOllama</code>) share the same interface — you can swap models without changing prompt or chain code.</li>
+      <li>LCEL's pipe operator <code>|</code> is LangChain's most important concept: <code>prompt | llm | parser</code> reads left-to-right and each step's output feeds the next.</li>
+      <li><code>StrOutputParser()</code> is usually the last step — it converts the <code>AIMessage</code> object to a plain string. Without it you get an object, not text.</li>
+      <li>Use <code>llm.with_structured_output(PydanticModel)</code> when you need a structured response. It uses OpenAI function calling under the hood — far more reliable than asking the LLM to format JSON.</li>
+      <li>Keep prompts in <code>PromptTemplate</code> objects, not f-strings. This makes them testable, reusable, and separates prompt engineering from application logic.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 37</h4>
+      <ul>
+        <li>Build a chain that takes a Java class name as input and explains its Python equivalent</li>
+        <li>Add a Pydantic output parser to return a structured response with 3 fields</li>
+        <li>Try swapping ChatOpenAI for ChatOllama (if you have Ollama installed) — verify the same code works</li>
+        <li>Experiment with temperature=0 vs temperature=0.9 on a creative task</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 37 — LangChain Agents + Tools:</strong> Chains are linear. Agents are dynamic — the LLM decides which tools to call and in what order. Tomorrow you'll build an agent that can search the web, run calculations, and use custom tools you define.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day35.html" class="nav-btn">← Day 35: FastAPI Project</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day37.html" class="nav-btn">Day 37: Agents + Tools →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-36-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-36-done') === 'true';
+    localStorage.setItem('day-36-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

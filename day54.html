@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 54 — Intro to ML Stack | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 54 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 54</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Intro to ML Stack</h1>
+  <p>scikit-learn is the gateway to ML in Python — clean API, consistent patterns, and everything you need for classical machine learning. Today: train/test split, a real classifier, Pipeline, model evaluation, and where this fits in the broader ML landscape.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>scikit-learn overview and the fit/predict API <span style="color:#555">~10 min</span></li>
+        <li>Loading data and train/test split <span style="color:#555">~10 min</span></li>
+        <li>A real classifier: RandomForestClassifier <span style="color:#555">~15 min</span></li>
+        <li>Pipeline — chaining preprocessing + model <span style="color:#555">~15 min</span></li>
+        <li>Model evaluation and saving with joblib <span style="color:#555">~15 min</span></li>
+        <li>Where this fits: pandas → sklearn → torch/tf <span style="color:#555">~5 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>scikit-learn</strong> → there's no Java equivalent with the same breadth; Weka is the closest</li>
+        <li><strong>fit() / predict()</strong> → train() / infer() — universal ML verbs regardless of framework</li>
+        <li><strong>Pipeline</strong> → a processing chain — like a series of transformers in a Spring batch job</li>
+        <li><strong>joblib.dump()</strong> → serializing a model to disk — like Java object serialization but ML-specific</li>
+        <li><strong>cross_val_score()</strong> → k-fold validation — no direct Java equivalent in standard libs</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. The scikit-learn API</h2>
+    <p>scikit-learn's biggest strength is its consistent API. Every estimator (transformer or model) follows the same pattern: <code>fit()</code> on training data, <code>transform()</code> or <code>predict()</code> on new data. Learn the pattern once, apply it to 100+ algorithms.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install scikit-learn pandas numpy joblib matplotlib
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — the universal sklearn pattern</span>
+      <pre><code class="language-python">from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+
+# Every estimator follows: fit() → predict() / transform()
+
+scaler = StandardScaler()
+scaler.fit(X_train)           # learn mean and std from training data
+X_scaled = scaler.transform(X_train)   # apply the scaling
+# Or combined: scaler.fit_transform(X_train)
+
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)   # train on features + labels
+y_pred = model.predict(X_test)         # predict labels
+y_proba = model.predict_proba(X_test)  # predict class probabilities
+
+# The same verbs work for LogisticRegression, SVC, GradientBoosting, etc.</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. A Real End-to-End Example</h2>
+    <p>Predicting customer churn — a realistic classification problem. A customer either churns (1) or stays (0) based on their usage patterns.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — load data + train/test split</span>
+      <pre><code class="language-python">import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.datasets import make_classification
+
+# Simulate customer churn data
+# In practice: df = pd.read_csv("churn.csv")
+X, y = make_classification(
+    n_samples=1_000,
+    n_features=10,
+    n_informative=6,
+    n_classes=2,
+    random_state=42,
+)
+feature_names = [
+    "tenure_months", "monthly_spend", "support_calls",
+    "login_days_30d", "feature_usage", "plan_tier",
+    "num_products", "late_payments", "avg_session_min", "nps_score"
+]
+df = pd.DataFrame(X, columns=feature_names)
+df["churned"] = y
+
+# Separate features and target
+X = df.drop("churned", axis=1)
+y = df["churned"]
+
+# 80/20 train/test split — stratify preserves class ratio
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y,         # equal churn ratio in train and test
+)
+
+print(f"Train: {len(X_train)}, Test: {len(X_test)}")
+print(f"Churn rate: {y.mean():.1%}")</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — train + evaluate</span>
+      <pre><code class="language-python">from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import (
+    accuracy_score, classification_report,
+    confusion_matrix, roc_auc_score,
+)
+
+model = RandomForestClassifier(
+    n_estimators=100,
+    max_depth=10,
+    random_state=42,
+    n_jobs=-1,          # use all CPU cores
+)
+model.fit(X_train, y_train)
+
+y_pred  = model.predict(X_test)
+y_proba = model.predict_proba(X_test)[:, 1]   # probability of churn
+
+print(f"Accuracy:  {accuracy_score(y_test, y_pred):.3f}")
+print(f"ROC-AUC:   {roc_auc_score(y_test, y_proba):.3f}")
+
+print("\nClassification Report:")
+print(classification_report(y_test, y_pred, target_names=["Stayed", "Churned"]))
+
+print("\nConfusion Matrix:")
+print(confusion_matrix(y_test, y_pred))
+# [[true_neg, false_pos],
+#  [false_neg, true_pos]]
+
+# Feature importance — which features matter most?
+importances = pd.Series(model.feature_importances_, index=feature_names)
+print("\nTop features:")
+print(importances.sort_values(ascending=False).head(5))</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Pipeline — Preprocessing + Model</h2>
+    <p>A Pipeline chains transformers and a final estimator. This is the right pattern for production — it prevents data leakage (fitting the scaler on test data) and makes the whole workflow a single object that can be saved and loaded.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — Pipeline</span>
+      <pre><code class="language-python">from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder
+
+# Define which columns are numeric vs categorical
+numeric_features = ["tenure_months", "monthly_spend", "support_calls",
+                     "login_days_30d", "avg_session_min"]
+categorical_features = ["plan_tier"]   # if present in real data
+
+# Numeric pipeline: fill missing values, then scale
+numeric_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="median")),
+    ("scaler", StandardScaler()),
+])
+
+# Categorical pipeline: fill missing, one-hot encode
+categorical_transformer = Pipeline([
+    ("imputer", SimpleImputer(strategy="most_frequent")),
+    ("encoder", OneHotEncoder(handle_unknown="ignore")),
+])
+
+# Combine transformers for different column types
+preprocessor = ColumnTransformer([
+    ("num", numeric_transformer, numeric_features),
+    # ("cat", categorical_transformer, categorical_features),
+])
+
+# Full pipeline: preprocess + classify
+pipeline = Pipeline([
+    ("preprocessor", preprocessor),
+    ("classifier", RandomForestClassifier(n_estimators=100, random_state=42)),
+])
+
+# Train the entire pipeline — preprocessing fit only on training data
+pipeline.fit(X_train[numeric_features], y_train)
+
+# Predict on raw (unscaled) test data — pipeline handles it
+y_pred = pipeline.predict(X_test[numeric_features])
+print(f"Pipeline accuracy: {accuracy_score(y_test, y_pred):.3f}")</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Why Pipeline prevents data leakage:</strong> If you scale <em>before</em> splitting, the scaler learns from the test set (leak). Pipeline's <code>fit(X_train)</code> only fits the scaler on training data. When you call <code>predict(X_test)</code>, it applies the already-fitted scaler — no leak.
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Cross-Validation + Hyperparameter Tuning</h2>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from sklearn.model_selection import cross_val_score, GridSearchCV
+
+# k-fold cross validation — more reliable than a single train/test split
+scores = cross_val_score(
+    pipeline,
+    X[numeric_features],
+    y,
+    cv=5,               # 5-fold
+    scoring="roc_auc",
+    n_jobs=-1,
+)
+print(f"CV ROC-AUC: {scores.mean():.3f} ± {scores.std():.3f}")
+
+# Grid search for hyperparameter tuning
+param_grid = {
+    "classifier__n_estimators": [50, 100, 200],
+    "classifier__max_depth": [5, 10, None],
+    "classifier__min_samples_split": [2, 5],
+}
+
+grid_search = GridSearchCV(
+    pipeline,
+    param_grid,
+    cv=3,
+    scoring="roc_auc",
+    n_jobs=-1,
+    verbose=1,
+)
+grid_search.fit(X_train[numeric_features], y_train)
+print(f"Best params: {grid_search.best_params_}")
+print(f"Best CV score: {grid_search.best_score_:.3f}")</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Saving and Loading Models</h2>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import joblib
+from pathlib import Path
+
+model_path = Path("models/churn_pipeline.joblib")
+model_path.parent.mkdir(exist_ok=True)
+
+# Save the entire pipeline (includes the fitted scaler)
+joblib.dump(pipeline, model_path)
+print(f"Model saved: {model_path} ({model_path.stat().st_size / 1024:.1f} KB)")
+
+# Load and use in production
+loaded_pipeline = joblib.load(model_path)
+
+# Predict on new data — pipeline handles all preprocessing
+new_customer = pd.DataFrame([{
+    "tenure_months": 14,
+    "monthly_spend": 89.99,
+    "support_calls": 3,
+    "login_days_30d": 12,
+    "avg_session_min": 8.5,
+}])
+
+churn_prob = loaded_pipeline.predict_proba(new_customer)[0, 1]
+print(f"Churn probability: {churn_prob:.1%}")
+print("Action: " + ("FLAG for retention" if churn_prob > 0.5 else "Low risk"))</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>6. The ML Stack Landscape</h2>
+    <div class="diagram-box">
+      pandas / numpy          ← data wrangling, feature engineering
+           ↓
+      scikit-learn            ← classical ML (today's focus)
+           ↓                    tabular data, structured problems
+      XGBoost / LightGBM     ← gradient boosting, Kaggle-level performance
+           ↓
+      PyTorch / TensorFlow   ← deep learning, unstructured data
+           ↓                    images, text, audio
+      Hugging Face            ← pre-trained models, fine-tuning
+           ↓
+      LangChain + OpenAI      ← LLM applications (Days 36–39)
+    </div>
+
+    <div class="callout-teal">
+      <strong>When to use what:</strong> Start with scikit-learn for structured/tabular data (the most common real-world case). Move to XGBoost/LightGBM when you need better accuracy on tabular data. Use PyTorch/HuggingFace for images, text, speech, or any problem where pre-trained models exist. Use LangChain/OpenAI for anything that involves natural language generation or reasoning.
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Train/test split</div>
+        <code>train_test_split(X, y, test_size=0.2, stratify=y)</code>
+        <p>stratify=y preserves class balance in both sets</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Fit + predict</div>
+        <code>model.fit(X_train, y_train)<br>model.predict(X_test)</code>
+        <p>Universal sklearn API — same for all 100+ estimators</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Probabilities</div>
+        <code>model.predict_proba(X)[:, 1]</code>
+        <p>Column 1 = probability of the positive class (churn=1)</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Classification report</div>
+        <code>classification_report(y_true, y_pred)</code>
+        <p>Precision, recall, F1 per class — more useful than accuracy alone</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Pipeline</div>
+        <code>Pipeline([("scaler", StandardScaler()), ("clf", RFC())])</code>
+        <p>Chains preprocessing + model; prevents data leakage</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Cross-validation</div>
+        <code>cross_val_score(pipeline, X, y, cv=5, scoring="roc_auc")</code>
+        <p>More reliable than single train/test split</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Save model</div>
+        <code>joblib.dump(pipeline, "model.joblib")</code>
+        <p>Saves fitted pipeline including transformers</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Load model</div>
+        <code>pipeline = joblib.load("model.joblib")</code>
+        <p>Returns ready-to-predict pipeline — no re-fitting needed</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>scikit-learn's <code>fit()</code> / <code>predict()</code> API is the most important thing to internalize. Once you learn it on RandomForest, you know the interface for Logistic Regression, SVM, GradientBoosting, and 90 other algorithms.</li>
+      <li>Always use <code>Pipeline</code> in production. Fitting your scaler before the train/test split (data leakage) is the most common ML bug — Pipeline makes it structurally impossible.</li>
+      <li>Accuracy is often a misleading metric for imbalanced datasets. Report precision, recall, and ROC-AUC. A model that predicts "no churn" for every customer has 95% accuracy if 5% churn — but it's useless.</li>
+      <li><code>joblib.dump(pipeline)</code> saves the entire fitted pipeline — including the scaler's learned mean/std. When you load and predict in production, raw input is processed identically to training time.</li>
+      <li>scikit-learn is the right tool for structured tabular data. For images, text, or anything where pre-trained deep learning models exist, go straight to HuggingFace or PyTorch — don't try to build from scratch.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 55</h4>
+      <ul>
+        <li>Load the iris dataset (<code>sklearn.datasets.load_iris()</code>) and build a Pipeline that scales features and classifies species</li>
+        <li>Compare accuracy of LogisticRegression vs RandomForestClassifier on the same dataset</li>
+        <li>Run cross_val_score with cv=10 and report mean ± std</li>
+        <li>Save your best pipeline with joblib, load it fresh, and verify predictions are identical</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 55 — Review + Weak Spots:</strong> Two days to go. Tomorrow is your chance to revisit the concepts that felt least solid, check your code against the Pythonic style checklist, and decide what to focus on next based on your direction.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day53.html" class="nav-btn">← Day 53: Web Scraping</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day55.html" class="nav-btn">Day 55: Review →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-54-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-54-done') === 'true';
+    localStorage.setItem('day-54-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 49 — Project: Package a Library | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+    .day-badge { background: #ff6b35; color: #fff; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 49 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 49 — Project</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Project: Package a Library</h1>
+  <p>Take the Day 35 task manager, extract the core logic into a proper installable Python package with <code>pyproject.toml</code>, a Click CLI, full type hints, and a pytest suite. Ship it like a real open-source library.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Project Spec</h2>
+    <div class="spec-box">
+      <h3>What You're Building</h3>
+      <ul>
+        <li><strong>What:</strong> An installable Python package called <code>tasklib</code>. Core logic (models, storage, service) as a library. Click CLI as the user interface. Full pytest suite. pyproject.toml for packaging.</li>
+        <li><strong>Package:</strong> <code>tasklib</code> — importable as <code>from tasklib import TaskService</code></li>
+        <li><strong>CLI:</strong> <code>tasklib</code> terminal command — add, list, done, delete sub-commands</li>
+        <li><strong>Storage:</strong> JSON file for CLI use; SQLite via SQLAlchemy for programmatic use</li>
+        <li><strong>Type hints:</strong> Full annotations throughout — passes mypy --strict</li>
+        <li><strong>Tests:</strong> pytest suite with 90%+ coverage; both unit and integration tests</li>
+        <li><strong>Covers:</strong> Packaging (47), Click CLI (47), Design patterns (48), pytest (27), type hints (13), dataclasses (13)</li>
+      </ul>
+    </div>
+    <div class="stretch-box">
+      <strong>Stretch Goal:</strong> Publish to TestPyPI and install from there. Add a <code>--format</code> flag to the list command (table, json, csv) using the Strategy pattern from Day 48.
+    </div>
+  </section>
+
+  <section>
+    <h2>Project Structure</h2>
+    <div class="python-block">
+      <span class="block-label">file layout</span>
+      <pre><code class="language-text">tasklib/                    ← project root
+  pyproject.toml
+  README.md
+  .env.example
+  src/
+    tasklib/
+      __init__.py           ← public API surface
+      models.py             ← Task dataclass
+      storage.py            ← abstract Protocol + implementations
+      service.py            ← TaskService business logic
+      cli.py                ← Click commands
+      exceptions.py         ← custom exceptions
+  tests/
+    conftest.py
+    test_models.py
+    test_service.py
+    test_cli.py</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 1 — pyproject.toml</h2>
+    <div class="python-block">
+      <span class="block-label">pyproject.toml</span>
+      <pre><code class="language-toml">[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "tasklib"
+version = "0.1.0"
+description = "A task management library with CLI"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    "click>=8.0",
+    "sqlalchemy>=2.0",
+    "pydantic-settings>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "mypy",
+    "ruff",
+]
+
+[project.scripts]
+tasklib = "tasklib.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=tasklib --cov-report=term-missing"</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 2 — Models + Exceptions</h2>
+    <div class="python-block">
+      <span class="block-label">src/tasklib/models.py</span>
+      <pre><code class="language-python">from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum
+
+class Priority(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+class Status(str, Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    DONE = "done"
+
+@dataclass
+class Task:
+    title: str
+    id: int = 0
+    priority: Priority = Priority.MEDIUM
+    status: Status = Status.PENDING
+    notes: str = ""
+    created_at: datetime = field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "title": self.title,
+            "priority": self.priority.value,
+            "status": self.status.value,
+            "notes": self.notes,
+            "created_at": self.created_at.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Task":
+        return cls(
+            id=data["id"],
+            title=data["title"],
+            priority=Priority(data["priority"]),
+            status=Status(data["status"]),
+            notes=data.get("notes", ""),
+            created_at=datetime.fromisoformat(data["created_at"]),
+        )</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">src/tasklib/exceptions.py</span>
+      <pre><code class="language-python">class TaskLibError(Exception):
+    """Base exception for all tasklib errors."""
+
+class TaskNotFoundError(TaskLibError):
+    def __init__(self, task_id: int) -> None:
+        super().__init__(f"Task with id={task_id} not found")
+        self.task_id = task_id
+
+class StorageError(TaskLibError):
+    """Raised when the storage backend fails."""</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 3 — Storage Protocol + Implementations</h2>
+    <div class="python-block">
+      <span class="block-label">src/tasklib/storage.py</span>
+      <pre><code class="language-python">import json
+import os
+from typing import Protocol
+from .models import Task, Status
+
+class TaskStorage(Protocol):
+    """Protocol — any class with these methods can be used as storage."""
+    def save(self, task: Task) -> Task: ...
+    def get(self, task_id: int) -> Task | None: ...
+    def list_all(self, status: Status | None = None) -> list[Task]: ...
+    def delete(self, task_id: int) -> None: ...
+
+class JsonStorage:
+    """File-backed JSON storage — good for the CLI."""
+
+    def __init__(self, path: str = "~/.tasklib/tasks.json") -> None:
+        self._path = os.path.expanduser(path)
+        os.makedirs(os.path.dirname(self._path), exist_ok=True)
+
+    def _load(self) -> dict[int, dict]:
+        if not os.path.exists(self._path):
+            return {}
+        with open(self._path) as f:
+            return {int(k): v for k, v in json.load(f).items()}
+
+    def _dump(self, data: dict[int, dict]) -> None:
+        with open(self._path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def save(self, task: Task) -> Task:
+        data = self._load()
+        if task.id == 0:
+            task.id = max(data.keys(), default=0) + 1
+        data[task.id] = task.to_dict()
+        self._dump(data)
+        return task
+
+    def get(self, task_id: int) -> Task | None:
+        return Task.from_dict(d) if (d := self._load().get(task_id)) else None
+
+    def list_all(self, status: Status | None = None) -> list[Task]:
+        tasks = [Task.from_dict(d) for d in self._load().values()]
+        if status:
+            tasks = [t for t in tasks if t.status == status]
+        return sorted(tasks, key=lambda t: t.id)
+
+    def delete(self, task_id: int) -> None:
+        data = self._load()
+        data.pop(task_id, None)
+        self._dump(data)
+
+class InMemoryStorage:
+    """In-memory storage — perfect for tests."""
+
+    def __init__(self) -> None:
+        self._store: dict[int, Task] = {}
+        self._next_id = 1
+
+    def save(self, task: Task) -> Task:
+        if task.id == 0:
+            task.id = self._next_id
+            self._next_id += 1
+        self._store[task.id] = task
+        return task
+
+    def get(self, task_id: int) -> Task | None:
+        return self._store.get(task_id)
+
+    def list_all(self, status: Status | None = None) -> list[Task]:
+        tasks = list(self._store.values())
+        if status:
+            tasks = [t for t in tasks if t.status == status]
+        return sorted(tasks, key=lambda t: t.id)
+
+    def delete(self, task_id: int) -> None:
+        self._store.pop(task_id, None)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 4 — Service + Public API</h2>
+    <div class="python-block">
+      <span class="block-label">src/tasklib/service.py</span>
+      <pre><code class="language-python">from .models import Task, Priority, Status
+from .storage import TaskStorage
+from .exceptions import TaskNotFoundError
+
+class TaskService:
+    def __init__(self, storage: TaskStorage) -> None:
+        self._storage = storage
+
+    def create(self, title: str, priority: Priority = Priority.MEDIUM, notes: str = "") -> Task:
+        if not title.strip():
+            raise ValueError("Title cannot be empty")
+        return self._storage.save(Task(title=title.strip(), priority=priority, notes=notes))
+
+    def complete(self, task_id: int) -> Task:
+        task = self._get_or_raise(task_id)
+        task.status = Status.DONE
+        return self._storage.save(task)
+
+    def start(self, task_id: int) -> Task:
+        task = self._get_or_raise(task_id)
+        task.status = Status.IN_PROGRESS
+        return self._storage.save(task)
+
+    def delete(self, task_id: int) -> None:
+        self._get_or_raise(task_id)
+        self._storage.delete(task_id)
+
+    def list_tasks(self, status: Status | None = None) -> list[Task]:
+        return self._storage.list_all(status=status)
+
+    def _get_or_raise(self, task_id: int) -> Task:
+        task = self._storage.get(task_id)
+        if not task:
+            raise TaskNotFoundError(task_id)
+        return task</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">src/tasklib/__init__.py — public API</span>
+      <pre><code class="language-python"># Explicit public API surface — users import from tasklib directly
+from .models import Task, Priority, Status
+from .service import TaskService
+from .storage import JsonStorage, InMemoryStorage
+from .exceptions import TaskLibError, TaskNotFoundError, StorageError
+
+__version__ = "0.1.0"
+__all__ = [
+    "Task", "Priority", "Status",
+    "TaskService",
+    "JsonStorage", "InMemoryStorage",
+    "TaskLibError", "TaskNotFoundError", "StorageError",
+]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 5 — Click CLI</h2>
+    <div class="python-block">
+      <span class="block-label">src/tasklib/cli.py</span>
+      <pre><code class="language-python">import click
+from .models import Priority, Status
+from .service import TaskService
+from .storage import JsonStorage
+from .exceptions import TaskNotFoundError
+
+def get_service() -> TaskService:
+    return TaskService(JsonStorage())
+
+@click.group()
+@click.version_option()
+def main() -> None:
+    """Tasklib — manage your tasks from the terminal."""
+
+@main.command()
+@click.argument("title")
+@click.option("--priority", "-p",
+              type=click.Choice([p.value for p in Priority]),
+              default=Priority.MEDIUM.value, show_default=True)
+@click.option("--notes", "-n", default="", help="Optional notes.")
+def add(title: str, priority: str, notes: str) -> None:
+    """Add a new task."""
+    task = get_service().create(title, Priority(priority), notes)
+    click.echo(click.style(f"✓ [{task.id}] {task.title}", fg="green"))
+
+@main.command("list")
+@click.option("--status", type=click.Choice([s.value for s in Status] + ["all"]), default="all")
+def list_tasks(status: str) -> None:
+    """List tasks."""
+    svc = get_service()
+    tasks = svc.list_tasks(Status(status) if status != "all" else None)
+    if not tasks:
+        click.echo("No tasks.")
+        return
+    for t in tasks:
+        icon  = "✓" if t.status == Status.DONE else ("→" if t.status == Status.IN_PROGRESS else "○")
+        color = "green" if t.status == Status.DONE else ("cyan" if t.status == Status.IN_PROGRESS else "white")
+        click.echo(click.style(f"{icon} [{t.id}] {t.title} ({t.priority.value})", fg=color))
+
+@main.command()
+@click.argument("task_id", type=int)
+def done(task_id: int) -> None:
+    """Mark a task as done."""
+    try:
+        task = get_service().complete(task_id)
+        click.echo(click.style(f"✓ Completed: {task.title}", fg="green"))
+    except TaskNotFoundError as e:
+        click.echo(click.style(str(e), fg="red"), err=True)
+        raise SystemExit(1)
+
+@main.command()
+@click.argument("task_id", type=int)
+@click.confirmation_option(prompt="Delete this task?")
+def delete(task_id: int) -> None:
+    """Delete a task."""
+    try:
+        get_service().delete(task_id)
+        click.echo(f"Deleted task {task_id}.")
+    except TaskNotFoundError as e:
+        click.echo(click.style(str(e), fg="red"), err=True)
+        raise SystemExit(1)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Step 6 — Tests</h2>
+    <div class="python-block">
+      <span class="block-label">tests/test_service.py</span>
+      <pre><code class="language-python">import pytest
+from tasklib import TaskService, InMemoryStorage, Priority, Status
+from tasklib.exceptions import TaskNotFoundError
+
+@pytest.fixture
+def service() -> TaskService:
+    return TaskService(InMemoryStorage())
+
+def test_create_task(service: TaskService) -> None:
+    task = service.create("Buy milk")
+    assert task.id > 0
+    assert task.title == "Buy milk"
+    assert task.status == Status.PENDING
+
+def test_create_assigns_incremental_ids(service: TaskService) -> None:
+    t1 = service.create("Task 1")
+    t2 = service.create("Task 2")
+    assert t2.id == t1.id + 1
+
+def test_create_empty_title_raises(service: TaskService) -> None:
+    with pytest.raises(ValueError, match="empty"):
+        service.create("   ")
+
+def test_complete_task(service: TaskService) -> None:
+    task = service.create("Write tests")
+    service.complete(task.id)
+    updated = service.list_tasks(Status.DONE)
+    assert any(t.id == task.id for t in updated)
+
+def test_complete_nonexistent_raises(service: TaskService) -> None:
+    with pytest.raises(TaskNotFoundError):
+        service.complete(9999)
+
+def test_list_filters_by_status(service: TaskService) -> None:
+    t1 = service.create("Task 1")
+    t2 = service.create("Task 2")
+    service.complete(t1.id)
+    pending = service.list_tasks(Status.PENDING)
+    assert all(t.status == Status.PENDING for t in pending)
+    assert any(t.id == t2.id for t in pending)
+
+def test_delete_task(service: TaskService) -> None:
+    task = service.create("To delete")
+    service.delete(task.id)
+    assert service.list_tasks() == []</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">tests/test_cli.py</span>
+      <pre><code class="language-python">from click.testing import CliRunner
+from tasklib.cli import main
+from tasklib import InMemoryStorage, TaskService
+import tasklib.cli as cli_module
+import pytest
+
+@pytest.fixture(autouse=True)
+def patch_storage(monkeypatch):
+    """Replace JsonStorage with InMemoryStorage in tests."""
+    storage = InMemoryStorage()
+    monkeypatch.setattr(cli_module, "get_service", lambda: TaskService(storage))
+
+def test_add_command():
+    runner = CliRunner()
+    result = runner.invoke(main, ["add", "Buy milk"])
+    assert result.exit_code == 0
+    assert "Buy milk" in result.output
+
+def test_list_command():
+    runner = CliRunner()
+    runner.invoke(main, ["add", "Task 1"])
+    runner.invoke(main, ["add", "Task 2"])
+    result = runner.invoke(main, ["list"])
+    assert "Task 1" in result.output
+    assert "Task 2" in result.output
+
+def test_done_command():
+    runner = CliRunner()
+    runner.invoke(main, ["add", "Complete me"])
+    result = runner.invoke(main, ["done", "1"])
+    assert result.exit_code == 0
+    assert "Completed" in result.output
+
+def test_done_nonexistent():
+    runner = CliRunner()
+    result = runner.invoke(main, ["done", "9999"])
+    assert result.exit_code == 1</code></pre>
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install -e ".[dev]"<br>
+      <span class="prompt">$ </span>pytest --cov=tasklib --cov-report=term-missing<br>
+      <span class="prompt">$ </span>mypy src/<br>
+      <span class="prompt">$ </span>ruff check src/<br>
+      <span class="prompt">$ </span>tasklib add "Write docs" --priority high<br>
+      <span class="prompt">$ </span>tasklib list<br>
+      <span class="prompt">$ </span>tasklib done 1
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Editable install</div>
+        <code>pip install -e ".[dev]"</code>
+        <p>Installs package + dev extras; live edits take effect immediately</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Public API</div>
+        <code>__all__ = ["Task", "TaskService", ...]</code>
+        <p>Controls what 'from tasklib import *' exports</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">CLI runner in tests</div>
+        <code>CliRunner().invoke(main, ["add", "title"])</code>
+        <p>Click's test runner — captures output, exit code, no real CLI needed</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Patch for tests</div>
+        <code>monkeypatch.setattr(cli_module, "get_service", ...)</code>
+        <p>Replace real storage with InMemoryStorage in CLI tests</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Coverage report</div>
+        <code>pytest --cov=tasklib --cov-report=term-missing</code>
+        <p>Shows which lines are not covered by tests</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Type check</div>
+        <code>mypy src/ --strict</code>
+        <p>Strict mode enforces full annotations; catches missing types</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>The Protocol-based storage layer is the key architectural decision: <code>InMemoryStorage</code> makes tests instant and DB-free; <code>JsonStorage</code> works for CLI; you could add <code>SQLAlchemyStorage</code> for the API — zero changes to <code>TaskService</code>.</li>
+      <li>Expose a clean <code>__init__.py</code> with explicit <code>__all__</code>. Users should be able to do <code>from tasklib import TaskService</code> without knowing the internal module structure.</li>
+      <li>Click's <code>CliRunner</code> is the right tool for CLI tests — it captures stdout, stderr, and exit codes without spawning real processes. Combine it with <code>monkeypatch</code> to swap real I/O for fast in-memory implementations.</li>
+      <li><code>mypy --strict</code> on the whole package at this stage is achievable and worthwhile — you have full type hints and a proper package structure. Fix the mypy errors before publishing.</li>
+      <li>The <code>pyproject.toml</code> tool configuration section (<code>[tool.mypy]</code>, <code>[tool.ruff]</code>, <code>[tool.pytest.ini_options]</code>) replaces separate config files. One file to rule them all.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice + Stretch Goals</h4>
+      <ul>
+        <li>Add a <code>start</code> command to the CLI that marks a task as in_progress</li>
+        <li>Add coverage badge to README by running pytest-cov with --cov-report=xml and checking coverage.xml</li>
+        <li>Stretch: publish to TestPyPI — <code>python -m build &amp;&amp; twine upload --repository testpypi dist/*</code></li>
+        <li>Stretch: add a <code>--format</code> flag (table/json/csv) to the list command using Strategy pattern</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 50 — Advanced Testing:</strong> pytest-asyncio for testing async code, httpx AsyncClient as a FastAPI test client, Testcontainers for spinning up real Postgres in tests, and coverage reports in CI.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day48.html" class="nav-btn">← Day 48: Design Patterns</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day50.html" class="nav-btn">Day 50: Advanced Testing →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-49-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-49-done') === 'true';
+    localStorage.setItem('day-49-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

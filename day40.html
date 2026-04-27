@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 40 — Celery + Redis | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 40 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 40</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>Celery + Redis</h1>
+  <p>LLM calls, email sending, image processing — anything slow doesn't belong in an HTTP request. Celery is Python's distributed task queue: offload work to background workers, track results, retry on failure. The Spring <code>@Async</code> equivalent, but distributed.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>What Celery is and the broker/worker/result-backend model <span style="color:#555">~10 min</span></li>
+        <li>Setting up Celery with Redis <span style="color:#555">~10 min</span></li>
+        <li>Defining and calling tasks with @celery.task <span style="color:#555">~20 min</span></li>
+        <li>Task retries and error handling <span style="color:#555">~15 min</span></li>
+        <li>Periodic tasks with Celery Beat <span style="color:#555">~10 min</span></li>
+        <li>Integrating with FastAPI + monitoring with Flower <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>Celery</strong> → Spring's <code>@Async</code> + <code>@Scheduled</code> + a message broker (Kafka/RabbitMQ)</li>
+        <li><strong>Redis broker</strong> → the message queue (like a Kafka topic, but simpler)</li>
+        <li><strong>Celery worker</strong> → a separate JVM process consuming from a queue</li>
+        <li><strong>task.delay()</strong> → <code>CompletableFuture.runAsync()</code> or publishing a message</li>
+        <li><strong>AsyncResult</strong> → <code>Future&lt;T&gt;</code> — poll for completion, get result</li>
+        <li><strong>Celery Beat</strong> → Quartz Scheduler / Spring <code>@Scheduled(cron=...)</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- WHAT IS CELERY -->
+  <section>
+    <h2>1. The Celery Architecture</h2>
+    <p>Celery has three components: a <strong>broker</strong> (the message queue — receives task requests), <strong>workers</strong> (processes that execute tasks), and a <strong>result backend</strong> (stores task results so callers can retrieve them).</p>
+
+    <div class="diagram-box">
+      FastAPI request → task.delay() → Redis (broker) → Celery worker → executes task
+                                                                             ↓
+      FastAPI polls → AsyncResult.get() ← Redis (result backend) ← task result stored
+    </div>
+
+    <div class="callout-teal">
+      <strong>Why not just use asyncio?</strong> asyncio concurrency is single-process. Celery workers can run on multiple machines and survive your web server restarting. It also has retries, rate limiting, and scheduling built in — asyncio has none of that.
+    </div>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install celery redis<br>
+      <span class="prompt">$ </span># Start Redis (or use Docker)<br>
+      <span class="prompt">$ </span>docker run -d -p 6379:6379 redis:7-alpine
+    </div>
+  </section>
+
+  <!-- SETUP -->
+  <section>
+    <h2>2. Setting Up Celery</h2>
+
+    <div class="python-block">
+      <span class="block-label">celery_app.py</span>
+      <pre><code class="language-python">from celery import Celery
+
+# broker: where task messages are sent
+# backend: where task results are stored
+celery_app = Celery(
+    "tasks",
+    broker="redis://localhost:6379/0",
+    backend="redis://localhost:6379/1",    # use a different DB for results
+)
+
+celery_app.conf.update(
+    task_serializer="json",
+    result_serializer="json",
+    accept_content=["json"],
+    timezone="UTC",
+    enable_utc=True,
+    task_track_started=True,               # track "started" state (not just pending/success/fail)
+    task_acks_late=True,                   # only ack after task completes (safer on worker crash)
+    worker_prefetch_multiplier=1,          # one task at a time per worker (good for long tasks)
+)</code></pre>
+    </div>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — @Async equivalent</span>
+        <pre><code class="language-java">@Configuration
+@EnableAsync
+public class AsyncConfig {
+    @Bean
+    public Executor taskExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(4);
+        executor.initialize();
+        return executor;
+    }
+}
+
+@Service
+public class ReportService {
+    @Async
+    public CompletableFuture&lt;String&gt; generateReport(Long id) {
+        // runs in background thread
+        return CompletableFuture.completedFuture("done");
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — Celery equivalent</span>
+        <pre><code class="language-python">from celery_app import celery_app
+
+@celery_app.task(name="tasks.generate_report")
+def generate_report(report_id: int) -> str:
+    # runs in a separate Celery worker process
+    # can be on a different machine entirely
+    import time
+    time.sleep(5)   # simulate slow work
+    return f"Report {report_id} generated"
+
+# In your FastAPI endpoint:
+result = generate_report.delay(42)
+# returns immediately — task is queued in Redis
+print(result.id)    # task UUID for status tracking</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- TASK PATTERNS -->
+  <section>
+    <h2>3. Task Patterns</h2>
+
+    <h3>Basic Task + Result Retrieval</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from celery_app import celery_app
+from celery.result import AsyncResult
+
+@celery_app.task
+def add(x: int, y: int) -> int:
+    return x + y
+
+# Queue the task
+result = add.delay(10, 20)
+print(result.id)            # "a1b2c3d4-..."
+
+# Check status (non-blocking)
+print(result.state)         # PENDING → STARTED → SUCCESS / FAILURE
+print(result.ready())       # False until complete
+
+# Wait for result (blocking — use only in scripts, not FastAPI routes)
+value = result.get(timeout=30)
+print(value)                # 30</code></pre>
+    </div>
+
+    <h3>apply_async — Full Control</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from datetime import datetime, timedelta
+
+# Delay execution by 60 seconds
+result = generate_report.apply_async(
+    args=[42],
+    countdown=60,
+)
+
+# Execute at a specific time
+result = generate_report.apply_async(
+    args=[42],
+    eta=datetime.utcnow() + timedelta(hours=1),
+)
+
+# Route to a specific queue (for priority or worker specialization)
+result = generate_report.apply_async(
+    args=[42],
+    queue="high_priority",
+)</code></pre>
+    </div>
+
+    <h3>LLM Task — Real Use Case</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from celery_app import celery_app
+from openai import OpenAI
+
+@celery_app.task(name="tasks.process_document")
+def process_document(document_id: int, content: str) -> dict:
+    """Process a document with an LLM — takes 10-30 seconds."""
+    client = OpenAI()
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "Extract key points from this document."},
+            {"role": "user", "content": content},
+        ],
+    )
+    summary = response.choices[0].message.content
+    # Save to DB here
+    return {"document_id": document_id, "summary": summary}</code></pre>
+    </div>
+  </section>
+
+  <!-- RETRIES AND ERROR HANDLING -->
+  <section>
+    <h2>4. Retries and Error Handling</h2>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import httpx
+from celery_app import celery_app
+from celery.utils.log import get_task_logger
+
+logger = get_task_logger(__name__)
+
+@celery_app.task(
+    bind=True,              # gives access to self (the task instance)
+    max_retries=3,
+    default_retry_delay=60, # seconds between retries
+    autoretry_for=(httpx.HTTPError,),   # auto-retry on these exceptions
+    retry_backoff=True,     # exponential backoff: 60s, 120s, 240s
+    retry_backoff_max=600,  # cap at 10 minutes
+    retry_jitter=True,      # add randomness to prevent thundering herd
+)
+def fetch_and_process(self, url: str) -> dict:
+    """Fetch a URL and process it. Retries on network errors."""
+    logger.info(f"Fetching {url} (attempt {self.request.retries + 1})")
+    try:
+        response = httpx.get(url, timeout=10)
+        response.raise_for_status()
+        return {"url": url, "status": response.status_code}
+    except httpx.HTTPError as exc:
+        logger.warning(f"Failed to fetch {url}: {exc}")
+        raise self.retry(exc=exc)   # explicit retry with the exception
+
+# Handle task failure in the caller
+result = fetch_and_process.delay("https://api.example.com/data")
+try:
+    data = result.get(timeout=300)
+except Exception as e:
+    print(f"Task failed after all retries: {e}")</code></pre>
+    </div>
+
+    <h3>Task Hooks</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">@celery_app.task(bind=True)
+def important_task(self, task_id: int) -> str:
+    return "done"
+
+# Attach callbacks
+@important_task.on_success
+def on_success(retval, task_id, args, kwargs):
+    print(f"Task {task_id} succeeded: {retval}")
+
+@important_task.on_failure
+def on_failure(exc, task_id, args, kwargs, einfo):
+    print(f"Task {task_id} failed: {exc}")
+    # Send alert, update DB, etc.</code></pre>
+    </div>
+  </section>
+
+  <!-- CELERY BEAT -->
+  <section>
+    <h2>5. Periodic Tasks with Celery Beat</h2>
+    <p>Celery Beat is the scheduler — it sends tasks to the queue on a schedule. Think of it as a cron daemon that's integrated with your Celery setup.</p>
+
+    <div class="python-block">
+      <span class="block-label">celery_app.py — beat schedule</span>
+      <pre><code class="language-python">from celery import Celery
+from celery.schedules import crontab
+
+celery_app = Celery("tasks", broker="redis://localhost:6379/0", backend="redis://localhost:6379/1")
+
+celery_app.conf.beat_schedule = {
+    # Run every 30 seconds
+    "cleanup-expired-sessions": {
+        "task": "tasks.cleanup_sessions",
+        "schedule": 30.0,
+    },
+    # Every day at 8 AM UTC
+    "daily-summary-email": {
+        "task": "tasks.send_daily_summary",
+        "schedule": crontab(hour=8, minute=0),
+        "args": ("admin@example.com",),
+    },
+    # Every Monday at midnight
+    "weekly-report": {
+        "task": "tasks.generate_weekly_report",
+        "schedule": crontab(day_of_week=1, hour=0, minute=0),
+    },
+}
+
+@celery_app.task(name="tasks.cleanup_sessions")
+def cleanup_sessions():
+    # delete expired sessions from DB
+    print("Cleaning up sessions")</code></pre>
+    </div>
+
+    <div class="shell-block">
+      # Terminal 1: start the worker<br>
+      <span class="prompt">$ </span>celery -A celery_app worker --loglevel=info<br>
+      <br>
+      # Terminal 2: start the beat scheduler<br>
+      <span class="prompt">$ </span>celery -A celery_app beat --loglevel=info<br>
+      <br>
+      # Terminal 3: monitor with Flower<br>
+      <span class="prompt">$ </span>pip install flower<br>
+      <span class="prompt">$ </span>celery -A celery_app flower --port=5555<br>
+      # Open http://localhost:5555
+    </div>
+  </section>
+
+  <!-- FASTAPI INTEGRATION -->
+  <section>
+    <h2>6. FastAPI Integration</h2>
+    <div class="python-block">
+      <span class="block-label">Python — async task status polling</span>
+      <pre><code class="language-python">from fastapi import FastAPI, HTTPException
+from celery.result import AsyncResult
+from tasks import process_document
+from pydantic import BaseModel
+
+app = FastAPI()
+
+class ProcessRequest(BaseModel):
+    document_id: int
+    content: str
+
+class TaskStatus(BaseModel):
+    task_id: str
+    status: str
+    result: dict | None = None
+
+@app.post("/documents/process", status_code=202)
+async def submit_document(request: ProcessRequest):
+    """Queue the document for processing. Returns immediately."""
+    task = process_document.delay(request.document_id, request.content)
+    return {"task_id": task.id, "status": "queued"}
+
+@app.get("/tasks/{task_id}", response_model=TaskStatus)
+async def get_task_status(task_id: str):
+    """Poll this endpoint to check task progress."""
+    result = AsyncResult(task_id)
+
+    if result.state == "PENDING":
+        return TaskStatus(task_id=task_id, status="pending")
+    elif result.state == "STARTED":
+        return TaskStatus(task_id=task_id, status="running")
+    elif result.state == "SUCCESS":
+        return TaskStatus(task_id=task_id, status="done", result=result.get())
+    elif result.state == "FAILURE":
+        raise HTTPException(status_code=500, detail=str(result.info))
+    return TaskStatus(task_id=task_id, status=result.state.lower())</code></pre>
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Create Celery app</div>
+        <code>Celery("name", broker="redis://localhost:6379/0")</code>
+        <p>broker = where tasks go; backend = where results go</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Define task</div>
+        <code>@celery_app.task<br>def my_task(arg): ...</code>
+        <p>Decorated function becomes a Celery task</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Queue task (fire & forget)</div>
+        <code>my_task.delay(arg)</code>
+        <p>Returns AsyncResult immediately; task runs in worker</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Queue with options</div>
+        <code>my_task.apply_async(args=[arg], countdown=60)</code>
+        <p>countdown=N delays by N seconds; eta= for specific time</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Check state</div>
+        <code>AsyncResult(task_id).state</code>
+        <p>PENDING → STARTED → SUCCESS or FAILURE</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Auto-retry</div>
+        <code>@task(autoretry_for=(SomeError,), max_retries=3, retry_backoff=True)</code>
+        <p>Exponential backoff prevents hammering a failing service</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Start worker</div>
+        <code>celery -A celery_app worker --loglevel=info</code>
+        <p>Run in separate terminal; multiple workers = more parallelism</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Start scheduler</div>
+        <code>celery -A celery_app beat --loglevel=info</code>
+        <p>Runs alongside workers for periodic tasks</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Monitor</div>
+        <code>celery -A celery_app flower --port=5555</code>
+        <p>Web UI for task status, worker stats, failure rates</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- WRAP UP -->
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Return a <code>task_id</code> immediately from your HTTP endpoint (202 Accepted) and let the client poll <code>/tasks/{id}</code>. Never block an HTTP request waiting for a slow task.</li>
+      <li><code>task.delay(args)</code> is shorthand for <code>task.apply_async(args=[args])</code>. Use <code>apply_async</code> when you need <code>countdown</code>, <code>eta</code>, or <code>queue</code> routing.</li>
+      <li>Always set <code>max_retries</code> and <code>retry_backoff=True</code> for tasks that call external services. Without a cap, a failing task can retry forever.</li>
+      <li><code>task_acks_late=True</code> means a task is only acknowledged (removed from the queue) after it completes successfully. If the worker crashes mid-task, the task is re-queued — safer for critical work.</li>
+      <li>Flower is the easiest way to understand what's happening in your Celery cluster — task rates, worker status, failure breakdown. Always run it in staging.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 41</h4>
+      <ul>
+        <li>Add a Celery task to your Day 35 FastAPI app that sends a "task created" notification (just log it)</li>
+        <li>Test retry behavior: make a task fail 2 times then succeed on the 3rd attempt</li>
+        <li>Add a periodic task that logs the count of pending tasks every minute</li>
+        <li>Open Flower and watch tasks move through PENDING → STARTED → SUCCESS</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 41 — Logging + Observability:</strong> Your app runs in Docker, processes tasks in Celery, and calls external APIs. How do you know what's happening? Tomorrow: structured logging with structlog, correlation IDs, and FastAPI middleware for request tracing.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day39.html" class="nav-btn">← Day 39: OpenAI SDK</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day41.html" class="nav-btn">Day 41: Logging →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-40-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-40-done') === 'true';
+    localStorage.setItem('day-40-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 39 — OpenAI SDK + Streaming | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 39 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 39</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>OpenAI SDK + Streaming</h1>
+  <p>LangChain wraps the OpenAI SDK. Today you'll use it directly — for streaming responses, function calling, structured outputs, token management, and the async client that integrates cleanly with FastAPI.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>OpenAI SDK setup and chat.completions.create() <span style="color:#555">~10 min</span></li>
+        <li>Streaming responses with stream=True <span style="color:#555">~15 min</span></li>
+        <li>Function calling / tool use <span style="color:#555">~20 min</span></li>
+        <li>Structured outputs with response_format <span style="color:#555">~15 min</span></li>
+        <li>Token management <span style="color:#555">~10 min</span></li>
+        <li>Async OpenAI client for FastAPI <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>OpenAI()</strong> → a pre-configured HTTP client for the OpenAI API</li>
+        <li><strong>chat.completions.create()</strong> → a POST request with a typed response body</li>
+        <li><strong>stream=True</strong> → Server-Sent Events (SSE) / reactive streams</li>
+        <li><strong>tools / function calling</strong> → structured JSON that the LLM fills in, like an API callback</li>
+        <li><strong>AsyncOpenAI</strong> → the WebClient equivalent — non-blocking I/O</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- BASIC COMPLETIONS -->
+  <section>
+    <h2>1. chat.completions.create()</h2>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install openai
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from openai import OpenAI
+
+client = OpenAI()   # reads OPENAI_API_KEY from environment
+
+# Basic completion
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "system", "content": "You are a Python expert helping a Java developer."},
+        {"role": "user", "content": "What is the Python equivalent of Java's Optional?"},
+    ],
+    temperature=0,
+    max_tokens=300,
+)
+
+# Access the response
+message = response.choices[0].message
+print(message.content)              # the text response
+print(response.usage.total_tokens)  # token usage for billing
+print(response.model)               # actual model used</code></pre>
+    </div>
+
+    <h3>Multi-turn Conversation</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from openai import OpenAI
+from openai.types.chat import ChatCompletionMessageParam
+
+client = OpenAI()
+
+def chat(messages: list[ChatCompletionMessageParam], user_input: str) -> str:
+    """Add user message, get response, update history."""
+    messages.append({"role": "user", "content": user_input})
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+    )
+    assistant_message = response.choices[0].message
+    messages.append(assistant_message)  # append AIMessage to history
+    return assistant_message.content
+
+history = [{"role": "system", "content": "You are a helpful Python tutor."}]
+print(chat(history, "What is a generator?"))
+print(chat(history, "Can you show me an example?"))   # remembers context</code></pre>
+    </div>
+  </section>
+
+  <!-- STREAMING -->
+  <section>
+    <h2>2. Streaming Responses</h2>
+    <p>Streaming returns tokens as they're generated instead of waiting for the full response. This is essential for good UX in chat applications — users see output immediately rather than staring at a spinner for 10 seconds.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — basic streaming</span>
+      <pre><code class="language-python">from openai import OpenAI
+
+client = OpenAI()
+
+# stream=True returns an iterator of chunks
+stream = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Explain Python decorators step by step."}],
+    stream=True,
+)
+
+# Each chunk contains a token (or empty delta at the end)
+for chunk in stream:
+    delta = chunk.choices[0].delta
+    if delta.content:
+        print(delta.content, end="", flush=True)
+print()  # newline after streaming finishes</code></pre>
+    </div>
+
+    <h3>Streaming to a FastAPI SSE Endpoint</h3>
+    <div class="python-block">
+      <span class="block-label">Python — FastAPI SSE stream</span>
+      <pre><code class="language-python">from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from openai import AsyncOpenAI
+import asyncio
+
+app = FastAPI()
+client = AsyncOpenAI()   # async version for FastAPI
+
+async def generate_stream(prompt: str):
+    """Async generator that yields SSE-formatted tokens."""
+    stream = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        stream=True,
+    )
+    async for chunk in stream:
+        delta = chunk.choices[0].delta
+        if delta.content:
+            yield f"data: {delta.content}\n\n"  # SSE format
+    yield "data: [DONE]\n\n"
+
+@app.get("/chat/stream")
+async def stream_chat(prompt: str):
+    return StreamingResponse(
+        generate_stream(prompt),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",      # disable nginx buffering
+        },
+    )</code></pre>
+    </div>
+  </section>
+
+  <!-- FUNCTION CALLING -->
+  <section>
+    <h2>3. Function Calling / Tool Use</h2>
+    <p>Function calling lets the LLM signal that it wants to call a function with specific arguments. You define the function schema; the LLM decides when and how to call it. This is more reliable than asking the LLM to output JSON in its text.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from openai import OpenAI
+import json
+
+client = OpenAI()
+
+# Define the tool schema
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_task_count",
+            "description": "Returns the number of tasks for a given status.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["pending", "in_progress", "done"],
+                        "description": "The task status to count",
+                    }
+                },
+                "required": ["status"],
+            },
+        },
+    }
+]
+
+# Real function that does the work
+def get_task_count(status: str) -> int:
+    # In reality: query your database
+    counts = {"pending": 12, "in_progress": 3, "done": 47}
+    return counts.get(status, 0)
+
+messages = [{"role": "user", "content": "How many tasks are still pending?"}]
+
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=messages,
+    tools=tools,
+    tool_choice="auto",    # LLM decides whether to call a tool
+)
+
+msg = response.choices[0].message
+
+if msg.tool_calls:
+    # LLM wants to call a function
+    call = msg.tool_calls[0]
+    args = json.loads(call.function.arguments)
+    result = get_task_count(**args)    # {"status": "pending"} → get_task_count(status="pending")
+
+    # Send result back to the LLM
+    messages.append(msg)   # the LLM's tool-call message
+    messages.append({
+        "role": "tool",
+        "tool_call_id": call.id,
+        "content": str(result),
+    })
+
+    # Get the final answer
+    final = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+    )
+    print(final.choices[0].message.content)
+    # "There are 12 pending tasks."</code></pre>
+    </div>
+  </section>
+
+  <!-- STRUCTURED OUTPUTS -->
+  <section>
+    <h2>4. Structured Outputs</h2>
+    <p>Structured outputs guarantee the response is valid JSON matching your schema. Unlike asking the LLM to "respond in JSON", this uses constrained sampling — it's 100% reliable.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — response_format with Pydantic</span>
+      <pre><code class="language-python">from openai import OpenAI
+from pydantic import BaseModel
+
+client = OpenAI()
+
+class TaskExtraction(BaseModel):
+    title: str
+    priority: str      # "low", "medium", "high"
+    due_date: str | None
+    tags: list[str]
+
+# parse() is the Pydantic-aware method — returns a validated model
+response = client.beta.chat.completions.parse(
+    model="gpt-4o-mini",
+    messages=[
+        {"role": "system", "content": "Extract task information from user input."},
+        {"role": "user", "content": "I need to finish the API review by Thursday, it's urgent. Tag it as backend and review."},
+    ],
+    response_format=TaskExtraction,
+)
+
+task = response.choices[0].message.parsed
+print(task.title)       # "Finish the API review"
+print(task.priority)    # "high"
+print(task.due_date)    # "Thursday"
+print(task.tags)        # ["backend", "review"]
+print(type(task))       # <class 'TaskExtraction'> — a real Pydantic model</code></pre>
+    </div>
+  </section>
+
+  <!-- TOKEN MANAGEMENT -->
+  <section>
+    <h2>5. Token Management</h2>
+    <p>Every API call costs tokens — input + output. Understanding token limits and costs is important for production apps.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import tiktoken
+from openai import OpenAI
+
+client = OpenAI()
+
+# Count tokens before sending (avoid exceeding context limits)
+def count_tokens(text: str, model: str = "gpt-4o-mini") -> int:
+    encoder = tiktoken.encoding_for_model(model)
+    return len(encoder.encode(text))
+
+# GPT-4o-mini context: 128k tokens (~96k words)
+# GPT-4o context: 128k tokens
+MAX_CONTEXT = 120_000   # leave buffer for output
+
+def truncate_to_fit(text: str, model: str = "gpt-4o-mini") -> str:
+    tokens = count_tokens(text, model)
+    if tokens <= MAX_CONTEXT:
+        return text
+    # Truncate and warn
+    encoder = tiktoken.encoding_for_model(model)
+    encoded = encoder.encode(text)[:MAX_CONTEXT]
+    return encoder.decode(encoded)
+
+# Check usage after a call
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Hello"}],
+    max_tokens=100,         # limit output tokens
+)
+usage = response.usage
+print(f"Input: {usage.prompt_tokens}")
+print(f"Output: {usage.completion_tokens}")
+print(f"Total: {usage.total_tokens}")
+# gpt-4o-mini: $0.15 per 1M input tokens, $0.60 per 1M output tokens</code></pre>
+    </div>
+  </section>
+
+  <!-- ASYNC CLIENT -->
+  <section>
+    <h2>6. Async OpenAI Client</h2>
+    <p>In FastAPI, use <code>AsyncOpenAI</code> — it's non-blocking and integrates cleanly with <code>async def</code> route handlers. Using the sync client in an async endpoint blocks the event loop.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — async FastAPI integration</span>
+      <pre><code class="language-python">from fastapi import FastAPI, Depends
+from openai import AsyncOpenAI
+from functools import lru_cache
+from pydantic import BaseModel
+
+app = FastAPI()
+
+@lru_cache
+def get_openai_client() -> AsyncOpenAI:
+    return AsyncOpenAI()   # singleton — reuses HTTP connection pool
+
+class ChatRequest(BaseModel):
+    message: str
+    system_prompt: str = "You are a helpful Python tutor."
+
+class ChatResponse(BaseModel):
+    reply: str
+    tokens_used: int
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(
+    request: ChatRequest,
+    client: AsyncOpenAI = Depends(get_openai_client),
+):
+    response = await client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": request.system_prompt},
+            {"role": "user", "content": request.message},
+        ],
+        temperature=0,
+        max_tokens=500,
+    )
+    return ChatResponse(
+        reply=response.choices[0].message.content,
+        tokens_used=response.usage.total_tokens,
+    )</code></pre>
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Sync client</div>
+        <code>client = OpenAI()</code>
+        <p>Reads OPENAI_API_KEY from env; use in scripts and CLIs</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Async client</div>
+        <code>client = AsyncOpenAI()</code>
+        <p>Use in FastAPI / asyncio apps — non-blocking</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Basic completion</div>
+        <code>client.chat.completions.create(model=..., messages=[...])</code>
+        <p>Returns ChatCompletion object</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Get text</div>
+        <code>response.choices[0].message.content</code>
+        <p>The LLM's response text</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Streaming</div>
+        <code>create(..., stream=True) → iterate chunks</code>
+        <p>chunk.choices[0].delta.content for each token</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Structured output</div>
+        <code>client.beta.chat.completions.parse(response_format=MyModel)</code>
+        <p>Returns .parsed as a Pydantic model instance</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Tool use</div>
+        <code>create(..., tools=[...], tool_choice="auto")</code>
+        <p>Check msg.tool_calls; execute and send result back</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Token count</div>
+        <code>tiktoken.encoding_for_model(model).encode(text)</code>
+        <p>Count tokens before sending to avoid limit errors</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Usage</div>
+        <code>response.usage.prompt_tokens / completion_tokens</code>
+        <p>Track for cost monitoring and optimization</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- WRAP UP -->
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>The sync <code>OpenAI()</code> client is for scripts; the async <code>AsyncOpenAI()</code> is for FastAPI. Using sync in an async route handler blocks the entire event loop — don't do it.</li>
+      <li>Streaming (<code>stream=True</code>) dramatically improves perceived performance. For long responses, users see output immediately instead of waiting for the full completion.</li>
+      <li>Function calling / tool use is more reliable than asking the LLM to output JSON in its text. Use it whenever you need structured data from the LLM.</li>
+      <li><code>client.beta.chat.completions.parse()</code> with a Pydantic model gives you 100% guaranteed valid, typed structured output. It's the right choice when you need specific fields from a response.</li>
+      <li>Use <code>tiktoken</code> to count tokens before sending large prompts. Exceeding the context limit gives you an API error; running close to it gives you truncated responses.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 40</h4>
+      <ul>
+        <li>Add a streaming endpoint to your Day 35 FastAPI app</li>
+        <li>Build a structured output endpoint that extracts entities from text (names, dates, amounts)</li>
+        <li>Implement function calling with one of your real database queries as the tool</li>
+        <li>Log <code>usage.total_tokens</code> for every request and calculate the hourly API cost</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 40 — Celery + Redis:</strong> LLM calls are slow and shouldn't block HTTP requests. Tomorrow: Celery — the distributed task queue that moves long-running work off the request thread. Think Spring's <code>@Async</code> but distributed across workers.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day38.html" class="nav-btn">← Day 38: ChromaDB</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day40.html" class="nav-btn">Day 40: Celery + Redis →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-39-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-39-done') === 'true';
+    localStorage.setItem('day-39-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

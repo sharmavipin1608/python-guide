@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 53 — Web Scraping | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 53 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 53</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Web Scraping</h1>
+  <p>requests + BeautifulSoup for static pages. Playwright for JavaScript-rendered content. Handling pagination, rate limiting, and the ethical considerations that separate responsible scraping from abuse.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>requests + BeautifulSoup — static page scraping <span style="color:#555">~20 min</span></li>
+        <li>CSS selectors and navigating the parse tree <span style="color:#555">~15 min</span></li>
+        <li>Handling pagination <span style="color:#555">~10 min</span></li>
+        <li>Playwright — JavaScript-rendered pages <span style="color:#555">~20 min</span></li>
+        <li>Rate limiting, robots.txt, and ethics <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>requests + BeautifulSoup</strong> → Jsoup (Java's HTML parsing library) — almost identical API</li>
+        <li><strong>soup.select("div.price")</strong> → <code>document.select("div.price")</code> in Jsoup</li>
+        <li><strong>Playwright</strong> → Selenium WebDriver — but modern, async, and with better auto-wait</li>
+        <li><strong>time.sleep(1)</strong> → Thread.sleep(1000) — polite delay between requests</li>
+        <li><strong>robots.txt parsing</strong> → no standard Java equivalent; same concept</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. requests + BeautifulSoup</h2>
+    <p>For pages that serve complete HTML (no JavaScript rendering needed), requests fetches the page and BeautifulSoup parses it. This covers the majority of scraping targets.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install requests beautifulsoup4 lxml
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — basic scraping</span>
+      <pre><code class="language-python">import requests
+from bs4 import BeautifulSoup
+
+def fetch_page(url: str) -> BeautifulSoup:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; MyBot/1.0; +https://mysite.com/bot)"
+    }
+    response = requests.get(url, headers=headers, timeout=10)
+    response.raise_for_status()
+    return BeautifulSoup(response.text, "lxml")   # lxml is faster than html.parser
+
+soup = fetch_page("https://books.toscrape.com/")
+
+# Find elements
+title = soup.find("h1").text.strip()
+
+# CSS selector — same syntax as JavaScript's querySelector
+books = soup.select("article.product_pod")
+for book in books:
+    name  = book.select_one("h3 a")["title"]       # attribute access
+    price = book.select_one(".price_color").text
+    rating = book.select_one("p.star-rating")["class"][1]  # "One", "Two", etc.
+    print(f"{name}: {price} ({rating} stars)")</code></pre>
+    </div>
+
+    <h3>Navigating the Parse Tree</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from bs4 import BeautifulSoup, Tag
+
+html = """
+<div class="product">
+  <h2 class="title">Python Cookbook</h2>
+  <span class="price">$39.99</span>
+  <ul class="tags"><li>python</li><li>programming</li></ul>
+</div>
+"""
+soup = BeautifulSoup(html, "lxml")
+
+# find() returns first match; find_all() returns a list
+product = soup.find("div", class_="product")
+
+# Navigate parent/siblings/children
+title_tag = product.find("h2")
+print(title_tag.text)               # "Python Cookbook"
+print(title_tag.next_sibling)       # whitespace text node
+print(title_tag.find_next("span"))  # <span class="price">$39.99</span>
+
+# Get all list items
+tags = [li.text for li in product.select("ul.tags li")]
+print(tags)   # ["python", "programming"]
+
+# Attribute access
+link = soup.find("a")
+if link:
+    print(link.get("href", "no href"))   # safe attribute access
+
+# Check if element exists before accessing
+price_tag = product.find("span", class_="price")
+price = price_tag.text if price_tag else "N/A"</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Handling Pagination</h2>
+    <div class="python-block">
+      <span class="block-label">Python — paginated scraper</span>
+      <pre><code class="language-python">import requests
+import time
+from bs4 import BeautifulSoup
+from dataclasses import dataclass
+
+@dataclass
+class Book:
+    title: str
+    price: str
+    rating: str
+
+def scrape_books(base_url: str, max_pages: int = 5) -> list[Book]:
+    books = []
+    page = 1
+
+    while page <= max_pages:
+        # books.toscrape.com uses catalogue/page-N.html
+        url = f"{base_url}/catalogue/page-{page}.html"
+        response = requests.get(url, timeout=10)
+
+        # Stop if we've gone past the last page
+        if response.status_code == 404:
+            break
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "lxml")
+        articles = soup.select("article.product_pod")
+
+        if not articles:
+            break
+
+        for article in articles:
+            books.append(Book(
+                title=article.select_one("h3 a")["title"],
+                price=article.select_one(".price_color").text,
+                rating=article.select_one("p.star-rating")["class"][1],
+            ))
+
+        # Find next page link — stop if there isn't one
+        next_btn = soup.select_one("li.next a")
+        if not next_btn:
+            break
+
+        page += 1
+        time.sleep(1)   # be polite — 1 request per second
+        print(f"Scraped page {page-1}, {len(books)} books so far")
+
+    return books
+
+books = scrape_books("https://books.toscrape.com", max_pages=3)
+print(f"Total: {len(books)} books")</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Playwright — JavaScript-Rendered Pages</h2>
+    <p>Many modern sites render content with JavaScript after the initial page load — BeautifulSoup only sees the raw HTML, which has no data yet. Playwright controls a real browser, waits for JavaScript to run, then lets you extract the rendered content.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install playwright<br>
+      <span class="prompt">$ </span>playwright install chromium   # download browser binaries
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — Playwright sync API</span>
+      <pre><code class="language-python">from playwright.sync_api import sync_playwright
+from dataclasses import dataclass
+
+@dataclass
+class Listing:
+    title: str
+    price: str
+    url: str
+
+def scrape_with_playwright(search_url: str) -> list[Listing]:
+    listings = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)   # headless=False to watch it work
+        page = browser.new_page()
+
+        # Set realistic headers
+        page.set_extra_http_headers({
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+        })
+
+        page.goto(search_url)
+
+        # Wait for specific element to appear — auto-waits up to 30s
+        page.wait_for_selector(".listing-card", timeout=10_000)
+
+        # Get all listing cards
+        cards = page.query_selector_all(".listing-card")
+        for card in cards:
+            title = card.query_selector("h2")
+            price = card.query_selector(".price")
+            link  = card.query_selector("a")
+            if title and price and link:
+                listings.append(Listing(
+                    title=title.inner_text().strip(),
+                    price=price.inner_text().strip(),
+                    url=link.get_attribute("href") or "",
+                ))
+
+        browser.close()
+    return listings</code></pre>
+    </div>
+
+    <h3>Playwright Async API (for FastAPI / asyncio)</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+from playwright.async_api import async_playwright
+
+async def scrape_async(url: str) -> str:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        await page.goto(url)
+        await page.wait_for_load_state("networkidle")  # wait for all XHR to finish
+        content = await page.content()   # full rendered HTML
+        await browser.close()
+        return content
+
+# Useful Playwright actions
+async def interact_with_page(page):
+    await page.fill("#search-input", "python books")    # type into input
+    await page.click("#search-button")                  # click a button
+    await page.wait_for_selector(".results")            # wait for results
+    await page.screenshot(path="screenshot.png")        # save screenshot for debugging
+    text = await page.inner_text(".results")            # get text content</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Rate Limiting + robots.txt</h2>
+    <div class="python-block">
+      <span class="block-label">Python — polite scraper</span>
+      <pre><code class="language-python">import time
+import random
+from urllib.robotparser import RobotFileParser
+from urllib.parse import urlparse
+import requests
+
+def is_scraping_allowed(url: str, user_agent: str = "*") -> bool:
+    """Check robots.txt before scraping."""
+    parsed = urlparse(url)
+    robots_url = f"{parsed.scheme}://{parsed.netloc}/robots.txt"
+    rp = RobotFileParser()
+    rp.set_url(robots_url)
+    rp.read()
+    return rp.can_fetch(user_agent, url)
+
+class PoliteScraper:
+    def __init__(self, min_delay: float = 1.0, max_delay: float = 3.0):
+        self._min_delay = min_delay
+        self._max_delay = max_delay
+        self._session = requests.Session()
+        self._session.headers["User-Agent"] = "MyBot/1.0 (+https://example.com/bot)"
+
+    def get(self, url: str) -> requests.Response:
+        if not is_scraping_allowed(url):
+            raise PermissionError(f"robots.txt disallows scraping: {url}")
+
+        # Random delay — looks more human, avoids hammering the server
+        delay = random.uniform(self._min_delay, self._max_delay)
+        time.sleep(delay)
+
+        response = self._session.get(url, timeout=10)
+        response.raise_for_status()
+        return response
+
+scraper = PoliteScraper(min_delay=1.5, max_delay=4.0)
+# response = scraper.get("https://example.com/products")</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Ethical scraping checklist:</strong>
+      <br>✅ Check <code>robots.txt</code> and respect it
+      <br>✅ Add 1–3 second delays between requests
+      <br>✅ Identify your bot in the User-Agent header
+      <br>✅ Respect rate limit headers (<code>Retry-After</code>, <code>X-RateLimit-*</code>)
+      <br>✅ Only scrape publicly accessible data
+      <br>✅ Cache responses — don't re-fetch what you already have
+      <br>❌ Don't scrape personal data without consent
+      <br>❌ Don't bypass authentication or paywalls
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Fetch page</div>
+        <code>BeautifulSoup(requests.get(url).text, "lxml")</code>
+        <p>Use lxml parser — faster than html.parser</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">CSS selector</div>
+        <code>soup.select("div.product h2")</code>
+        <p>Returns list; select_one() returns first or None</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Get text</div>
+        <code>tag.text.strip()</code>
+        <p>Always strip — HTML often has leading/trailing whitespace</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Get attribute</div>
+        <code>tag["href"]</code> or <code>tag.get("href", "")</code>
+        <p>tag["href"] raises KeyError if missing; .get() is safe</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Playwright launch</div>
+        <code>p.chromium.launch(headless=True)</code>
+        <p>headless=False to watch the browser during development</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Wait for element</div>
+        <code>page.wait_for_selector(".results", timeout=10_000)</code>
+        <p>Waits up to 10s; raises TimeoutError if not found</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Polite delay</div>
+        <code>time.sleep(random.uniform(1, 3))</code>
+        <p>Random delay looks more human and avoids triggering rate limits</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Check robots.txt</div>
+        <code>RobotFileParser().can_fetch(user_agent, url)</code>
+        <p>Always check before scraping — respect the site's wishes</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Use requests + BeautifulSoup for static HTML pages. Use Playwright only when JavaScript rendering is required — it's 10–100× slower than a simple HTTP request.</li>
+      <li>CSS selectors (<code>soup.select("div.card h2 a")</code>) are more concise and familiar than BeautifulSoup's <code>find()</code> chaining. If you know CSS, you already know how to navigate the DOM.</li>
+      <li>Always check <code>robots.txt</code> before scraping. It's both a legal and ethical boundary — many sites explicitly disallow scrapers in their terms of service as well.</li>
+      <li>Random delays (1–3 seconds) between requests are not just polite — they also reduce the chance of being rate-limited or IP-banned. Consistent 1-second delays are easier for anti-scraping systems to detect.</li>
+      <li>Playwright's <code>wait_for_selector()</code> auto-waits for elements to appear — unlike Selenium where you had to manage <code>WebDriverWait</code> and <code>ExpectedConditions</code> manually. Much cleaner.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 54</h4>
+      <ul>
+        <li>Scrape the first 3 pages of https://books.toscrape.com and save results to a CSV with pandas</li>
+        <li>Add <code>robots.txt</code> checking and a 1.5s polite delay to your scraper</li>
+        <li>Try Playwright on a JavaScript-heavy site (like a React SPA) and compare what BeautifulSoup sees vs what Playwright sees</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 54 — Intro to ML Stack:</strong> scikit-learn, the training/test split, a real classifier, Pipeline for chaining preprocessing + model, and where Python's ML stack fits relative to PyTorch and TensorFlow.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day52.html" class="nav-btn">← Day 52: Scripting</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day54.html" class="nav-btn">Day 54: ML Stack →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-53-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-53-done') === 'true';
+    localStorage.setItem('day-53-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

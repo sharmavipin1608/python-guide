@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 15 — collections module | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 15 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 15</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>collections module</h1>
+  <p>Python's <code>collections</code> module gives you specialised container types that replace verbose Java patterns with single expressive lines — counting, grouping, queuing, and naming all become trivial.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><code>Counter</code> — count occurrences in one call, replaces HashMap counting loops</li>
+        <li><code>defaultdict</code> — dict with automatic default values, no more <code>KeyError</code> guards</li>
+        <li><code>OrderedDict</code> — when insertion order needs to be explicit</li>
+        <li><code>deque</code> — double-ended queue with O(1) append/pop on both ends</li>
+        <li><code>namedtuple</code> — lightweight immutable data object with named fields</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>Counter</code> → <code>HashMap&lt;T, Integer&gt;</code> with manual <code>getOrDefault(k, 0) + 1</code></li>
+        <li><code>defaultdict</code> → <code>computeIfAbsent</code> / <code>getOrDefault</code></li>
+        <li><code>OrderedDict</code> → <code>LinkedHashMap</code></li>
+        <li><code>deque</code> → <code>ArrayDeque</code></li>
+        <li><code>namedtuple</code> → Java Record (immutable) or a minimal POJO</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Counter</h2>
+
+    <h3>Counting made trivial</h3>
+    <p><code>Counter</code> counts hashable elements. Pass any iterable and get a dict-like object mapping elements to counts. It supports arithmetic operations and the most-common query that would take 10+ lines in Java.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">String[] words = text.split(" ");
+Map&lt;String, Integer&gt; counts = new HashMap&lt;&gt;();
+for (String w : words) {
+    counts.put(w, counts.getOrDefault(w, 0) + 1);
+}
+// Finding top 3 requires sorting entries...</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from collections import Counter
+
+text = "the cat sat on the mat the cat"
+counts = Counter(text.split())
+# Counter({'the': 3, 'cat': 2, 'sat': 1, 'on': 1, 'mat': 1})
+
+print(counts["the"])         # 3
+print(counts["missing"])     # 0  — no KeyError!
+print(counts.most_common(3)) # [('the', 3), ('cat', 2), ('sat', 1)]
+
+# Count characters
+char_count = Counter("mississippi")
+print(char_count.most_common(3))  # [('s', 4), ('i', 4), ('p', 2)]
+
+# Arithmetic on counters
+a = Counter(["a", "b", "a", "c"])
+b = Counter(["a", "b", "b", "d"])
+print(a + b)   # Counter({'a': 3, 'b': 3, 'c': 1, 'd': 1})
+print(a - b)   # Counter({'a': 1, 'c': 1})  — removes zero/neg
+print(a & b)   # Counter({'a': 1, 'b': 1})  — min of each
+print(a | b)   # Counter({'b': 2, 'a': 2, 'c': 1, 'd': 1})  — max</code></pre>
+      </div>
+    </div>
+
+    <h3>Practical: word frequency analysis</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import re
+from collections import Counter
+from pathlib import Path
+
+def word_frequency(filepath: str, top_n: int = 10) -> list[tuple[str, int]]:
+    text = Path(filepath).read_text().lower()
+    words = re.findall(r"\b[a-z]+\b", text)
+    stopwords = {"the", "a", "an", "and", "or", "in", "of", "to", "is"}
+    filtered = [w for w in words if w not in stopwords]
+    return Counter(filtered).most_common(top_n)
+
+# Returns: [('python', 42), ('class', 31), ...]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>defaultdict</h2>
+
+    <h3>No more KeyError guards</h3>
+    <p>A <code>defaultdict</code> automatically creates a value for missing keys using a factory function. The factory is any callable — <code>list</code>, <code>int</code>, <code>set</code>, or a lambda. This eliminates the defensive <code>setdefault</code> or <code>if key not in d</code> pattern.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">Map&lt;String, List&lt;String&gt;&gt; groups = new HashMap&lt;&gt;();
+for (String word : words) {
+    String key = String.valueOf(word.charAt(0));
+    groups.computeIfAbsent(key, k -> new ArrayList&lt;&gt;())
+          .add(word);
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from collections import defaultdict
+
+# Group words by first letter
+words = ["apple", "avocado", "banana", "blueberry", "cherry"]
+groups: defaultdict[str, list[str]] = defaultdict(list)
+
+for word in words:
+    groups[word[0]].append(word)   # no KeyError, list auto-created
+
+print(dict(groups))
+# {'a': ['apple', 'avocado'], 'b': ['banana', 'blueberry'], 'c': ['cherry']}
+
+# defaultdict(int) — counting without Counter
+word_count: defaultdict[str, int] = defaultdict(int)
+for word in words:
+    word_count[word[0]] += 1   # missing keys start at 0
+
+# defaultdict(set) — grouping unique values
+seen: defaultdict[str, set] = defaultdict(set)
+seen["errors"].add("timeout")
+seen["errors"].add("timeout")   # duplicate — set deduplicates
+print(len(seen["errors"]))      # 1</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Note:</strong> <code>defaultdict</code> behaves like a regular <code>dict</code> in every other way — iteration, <code>len()</code>, <code>.items()</code> all work identically. The only difference is what happens on a missing key access.
+    </div>
+  </section>
+
+  <section>
+    <h2>deque</h2>
+
+    <h3>O(1) both ends</h3>
+    <p><code>deque</code> (double-ended queue) is the right structure when you need to append or pop from both ends efficiently. Python's <code>list.pop(0)</code> is O(n) — it shifts every element. <code>deque.popleft()</code> is O(1).</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">Deque&lt;String&gt; deque = new ArrayDeque&lt;&gt;();
+deque.addFirst("front");
+deque.addLast("back");
+String first = deque.pollFirst();
+String last  = deque.pollLast();</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from collections import deque
+
+dq = deque([1, 2, 3])
+dq.appendleft(0)   # [0, 1, 2, 3]  — O(1)
+dq.append(4)       # [0, 1, 2, 3, 4] — O(1)
+dq.popleft()       # returns 0, O(1)
+dq.pop()           # returns 4, O(1)
+
+# Bounded deque — automatically discards oldest when full
+recent = deque(maxlen=3)
+for x in range(6):
+    recent.append(x)
+print(list(recent))  # [3, 4, 5] — only last 3 kept
+
+# Rotate — move items from one end to the other
+dq = deque([1, 2, 3, 4, 5])
+dq.rotate(2)    # [4, 5, 1, 2, 3]
+dq.rotate(-1)   # [5, 1, 2, 3, 4]</code></pre>
+      </div>
+    </div>
+
+    <h3>Real use: sliding window + BFS queue</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from collections import deque
+
+def sliding_window_max(nums: list[int], k: int) -> list[int]:
+    """Find max in each sliding window of size k."""
+    dq: deque[int] = deque()   # stores indices
+    result = []
+    for i, n in enumerate(nums):
+        while dq and nums[dq[-1]] < n:
+            dq.pop()
+        dq.append(i)
+        if dq[0] == i - k:
+            dq.popleft()
+        if i >= k - 1:
+            result.append(nums[dq[0]])
+    return result
+
+print(sliding_window_max([1,3,-1,-3,5,3,6,7], 3))
+# [3, 3, 5, 5, 6, 7]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>namedtuple</h2>
+
+    <h3>Lightweight immutable records</h3>
+    <p><code>namedtuple</code> creates a tuple subclass with named fields. You get tuple immutability and unpacking, plus dot-access by name. It's lighter than a dataclass — no methods, no mutable state, just structured data.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — record</span>
+        <pre><code class="language-java">public record Point(int x, int y) {}
+public record Color(int r, int g, int b) {}
+
+Point p = new Point(3, 4);
+System.out.println(p.x());  // 3
+// Can unpack? No.</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from collections import namedtuple
+from typing import NamedTuple
+
+# Old style
+Point = namedtuple("Point", ["x", "y"])
+
+# Modern typed style (preferred)
+class Point(NamedTuple):
+    x: int
+    y: int
+
+class Color(NamedTuple):
+    r: int
+    g: int
+    b: int
+    alpha: float = 1.0   # default value
+
+p = Point(3, 4)
+print(p.x)       # 3 — named access
+print(p[0])      # 3 — index access (it's still a tuple)
+x, y = p         # tuple unpacking works
+
+c = Color(255, 0, 0)
+print(c)         # Color(r=255, g=0, b=0, alpha=1.0)
+
+# Named tuples are hashable — can be dict keys or set members
+palette = {Color(255, 0, 0), Color(0, 255, 0)}
+
+# _replace — create a modified copy (immutable, so no in-place)
+p2 = p._replace(y=10)
+print(p2)   # Point(x=3, y=10)
+print(p)    # Point(x=3, y=4)  — original unchanged</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Counter</div>
+        <code>Counter(iterable)</code>
+        <p>Count elements. <code>.most_common(n)</code>, arithmetic ops, missing keys return 0.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">defaultdict</div>
+        <code>defaultdict(list) / defaultdict(int) / defaultdict(set)</code>
+        <p>Missing key access auto-creates value via factory. No KeyError.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">deque basics</div>
+        <code>dq.appendleft(x) / dq.popleft()</code>
+        <p>O(1) on both ends. Use instead of <code>list.insert(0, x)</code> or <code>list.pop(0)</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Bounded deque</div>
+        <code>deque(maxlen=N)</code>
+        <p>Automatically discards oldest items. Perfect for sliding windows and recent-N caches.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">namedtuple (typed)</div>
+        <code>class Point(NamedTuple): / x: int / y: int</code>
+        <p>Immutable, hashable, supports tuple unpacking and dot access.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">namedtuple copy</div>
+        <code>p._replace(x=10)</code>
+        <p>Returns a new namedtuple with specified fields changed. Original is unchanged.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Counter from dict</div>
+        <code>Counter({"a": 3, "b": 1})</code>
+        <p>Construct from an existing frequency dict.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Update counter</div>
+        <code>c.update(["a", "b", "a"])</code>
+        <p>Adds counts. Use <code>c.subtract()</code> to reduce counts.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>Counter</code> replaces every "count occurrences in a loop and store in a HashMap" pattern with a single call. Always reach for it when you need frequency analysis, voting tallies, or histogram data.</li>
+      <li><code>defaultdict</code> eliminates defensive key-existence checks. Pass <code>list</code>, <code>int</code>, <code>set</code>, or any zero-argument callable as the factory. It's a direct replacement for <code>computeIfAbsent</code> in Java.</li>
+      <li><code>deque</code> is the correct data structure for queues, sliding windows, and anything where you need O(1) operations at both ends. Never use <code>list.pop(0)</code> in a tight loop — it's O(n).</li>
+      <li><code>NamedTuple</code> (typed class syntax) is the idiomatic choice for immutable value objects without methods. Lighter than <code>@dataclass</code>, supports tuple unpacking, and is hashable out of the box.</li>
+      <li>All these types live in the standard library — no installation required. Prefer them over reimplementing the same patterns with plain <code>dict</code> and <code>list</code>.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 16</h4>
+      <ul>
+        <li>Use <code>Counter</code> to find the top 5 most common words in any text file, excluding stop words</li>
+        <li>Build an inverted index (word → list of line numbers) using <code>defaultdict(list)</code></li>
+        <li>Implement a simple LRU cache manually using a <code>deque(maxlen=N)</code> and a <code>dict</code></li>
+        <li>Create a <code>NamedTuple</code> for HTTP response data (<code>status</code>, <code>body</code>, <code>headers</code>) and use it as a dict key in a response cache</li>
+        <li>Use two <code>Counter</code>s on different sets of data and use <code>&amp;</code> and <code>-</code> to find common and unique elements</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 16: itertools + functools</strong><br>
+      You'll learn Python's functional programming toolkit: lazy iteration combinators (<code>chain</code>, <code>islice</code>, <code>product</code>, <code>groupby</code>) and higher-order function tools (<code>reduce</code>, <code>partial</code>). These let you build expressive data pipelines without writing loops.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day14.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day16.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 15;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

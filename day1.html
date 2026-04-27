@@ -1,0 +1,634 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 1 — Setup + Basics | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/bash.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 1 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 01</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Setup + Basics</h1>
+  <p>Install Python, understand dynamic typing, learn the built-in types, and write your first real Python code — all from a Java developer's perspective.</p>
+</div>
+
+<main>
+
+  <!-- ── PLAN ── -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><span class="topic">Python install, pip, venv — the toolchain explained</span><span class="time">~10 min</span></li>
+        <li><span class="topic">Variables and dynamic typing — no type declarations</span><span class="time">~10 min</span></li>
+        <li><span class="topic">Built-in types: int, float, str, bool, None</span><span class="time">~10 min</span></li>
+        <li><span class="topic">f-strings — better than String.format()</span><span class="time">~10 min</span></li>
+        <li><span class="topic">print() and input()</span><span class="time">~5 min</span></li>
+        <li><span class="topic">Running a .py file vs Java's compile-then-run</span><span class="time">~5 min</span></li>
+        <li><span class="topic">Hands-on practice</span><span class="time">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels at a glance</h4>
+      <ul>
+        <li><code>venv</code> is Python's per-project dependency scope — like Maven's local repo but per-project</li>
+        <li>No <code>String x = "hello"</code> — Python infers types at runtime, no declarations needed</li>
+        <li><code>None</code> is Python's <code>null</code></li>
+        <li>f-strings ≈ Java 21's <code>STR."Hello \{name}"</code> text blocks but cleaner</li>
+        <li><code>python hello.py</code> ≈ <code>javac + java</code> but in one step (interpreter, not compiler)</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ── TOOLCHAIN ── -->
+  <section>
+    <h2>1. The Python Toolchain</h2>
+
+    <p>As a Java developer, you're used to the Maven/Gradle + JDK ecosystem. Python has its own equivalent trio:</p>
+
+    <table style="width:100%;border-collapse:collapse;font-size:0.88rem;margin:16px 0;">
+      <thead>
+        <tr style="border-bottom:1px solid #2a2a2a;">
+          <th style="text-align:left;padding:10px 8px;color:#888;font-weight:600;">Java</th>
+          <th style="text-align:left;padding:10px 8px;color:#888;font-weight:600;">Python</th>
+          <th style="text-align:left;padding:10px 8px;color:#888;font-weight:600;">Purpose</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 8px;color:#c0c0c0;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">JDK</td>
+          <td style="padding:10px 8px;color:#f0e040;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">python / python3</td>
+          <td style="padding:10px 8px;color:#666;">The runtime + standard library</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 8px;color:#c0c0c0;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">Maven Central</td>
+          <td style="padding:10px 8px;color:#f0e040;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">PyPI</td>
+          <td style="padding:10px 8px;color:#666;">Central package repository</td>
+        </tr>
+        <tr style="border-bottom:1px solid #1a1a1a;">
+          <td style="padding:10px 8px;color:#c0c0c0;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">mvn / gradle</td>
+          <td style="padding:10px 8px;color:#f0e040;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">pip</td>
+          <td style="padding:10px 8px;color:#666;">Package installer</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 8px;color:#c0c0c0;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">pom.xml / build.gradle</td>
+          <td style="padding:10px 8px;color:#f0e040;font-family:'JetBrains Mono',monospace;font-size:0.8rem;">venv + requirements.txt</td>
+          <td style="padding:10px 8px;color:#666;">Project-scoped deps</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Installing Python</h3>
+    <p>On macOS use Homebrew (recommended). On Linux use your package manager. On Windows use the official installer.</p>
+
+    <div class="shell-block">
+      <span class="block-label">Shell</span>
+      <pre><code class="language-bash"># macOS
+brew install python
+
+# Verify
+python3 --version   # Python 3.12.x
+pip3 --version</code></pre>
+    </div>
+
+    <h3>Virtual Environments (venv)</h3>
+    <p>In Maven, each project declares its deps in <code>pom.xml</code> and Maven resolves them into a local repo (<code>~/.m2</code>) shared across projects. Python's pip installs to a global location by default, which causes version conflicts. <code>venv</code> creates a self-contained Python environment per project.</p>
+
+    <div class="callout">
+      <strong>Rule of thumb:</strong> Always create a venv before starting any Python project. It takes 3 seconds and prevents dependency hell.
+    </div>
+
+    <div class="shell-block">
+      <span class="block-label">Shell</span>
+      <pre><code class="language-bash"># Create venv (creates a .venv/ folder in your project)
+python3 -m venv .venv
+
+# Activate it (must do this every new terminal session)
+source .venv/bin/activate          # macOS/Linux
+.venv\Scripts\activate             # Windows
+
+# You'll see (.venv) prefix in your prompt
+# Now install packages — they go into .venv/, not global
+pip install requests
+
+# Freeze deps (like Maven's pom.xml dependency section)
+pip freeze > requirements.txt
+
+# Deactivate when done
+deactivate</code></pre>
+    </div>
+
+    <h3>Running Python code</h3>
+
+    <p>Python is interpreted. No separate compile step. The interpreter reads your <code>.py</code> file and executes it directly.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">// Two steps:
+// 1. Compile
+javac Hello.java   // → Hello.class
+
+// 2. Run
+java Hello</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python"># One step:
+python3 hello.py   # That's it
+
+# Or interactively:
+python3            # Opens REPL
+>>> print("hello")</code></pre>
+      </div>
+    </div>
+
+    <p>The Python REPL (Read-Eval-Print Loop) is like a live scratchpad. Use it constantly as a Java developer — it's faster than writing a main method to test a snippet.</p>
+  </section>
+
+  <!-- ── VARIABLES ── -->
+  <section>
+    <h2>2. Variables and Dynamic Typing</h2>
+
+    <p>Python uses <strong>dynamic typing</strong>. The type is attached to the value, not the variable. The variable is just a name pointing to an object.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — static typing</span>
+        <pre><code class="language-java">String name = "Alice";
+int age = 30;
+double pi = 3.14;
+boolean active = true;
+
+// Type mismatch → compile error
+name = 42;  // ERROR</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — dynamic typing</span>
+        <pre><code class="language-python">name = "Alice"    # str
+age = 30          # int
+pi = 3.14         # float
+active = True     # bool (capital T/F!)
+
+# Variable can be rebound to any type
+name = 42         # now it's an int — valid</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Important:</strong> Dynamic typing doesn't mean no types exist. Every value has a type — <code>type(42)</code> returns <code>&lt;class 'int'&gt;</code>. The difference is that the type is checked at runtime, not compile time. This is why Python has type hints (Day 13) — they restore tooling-level safety without changing the runtime behavior.
+    </div>
+
+    <h3>Naming conventions</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java conventions</span>
+        <pre><code class="language-java">// camelCase for variables/methods
+String userName = "alice";
+int maxRetryCount = 3;
+
+// PascalCase for classes
+class UserAccount { }
+
+// SCREAMING_SNAKE for constants
+static final int MAX_SIZE = 100;</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python conventions (PEP 8)</span>
+        <pre><code class="language-python"># snake_case for variables/functions
+user_name = "alice"
+max_retry_count = 3
+
+# PascalCase for classes (same as Java)
+class UserAccount: pass
+
+# SCREAMING_SNAKE for constants (same)
+MAX_SIZE = 100
+
+# Python has no const keyword —
+# it's just a convention</code></pre>
+      </div>
+    </div>
+
+    <h3>Multiple assignment</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Assign multiple variables at once
+x, y, z = 1, 2, 3
+
+# Swap without temp variable (tuple unpacking)
+x, y = y, x
+
+# Assign same value to multiple names
+a = b = c = 0
+
+# Check a variable's type at runtime
+print(type(name))    # &lt;class 'str'&gt;
+print(type(age))     # &lt;class 'int'&gt;</code></pre>
+    </div>
+  </section>
+
+  <!-- ── BUILT-IN TYPES ── -->
+  <section>
+    <h2>3. Built-in Types</h2>
+
+    <h3>int — arbitrary precision integers</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">int x = 42;
+long big = 9_999_999_999L;
+int a = 10 / 3;   // = 3 (integer division)
+double b = 10.0 / 3;  // = 3.333...</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">x = 42
+big = 9_999_999_999   # underscores ok, no suffix
+a = 10 // 3    # = 3  (floor division, use //)
+b = 10 / 3     # = 3.333...  (/ always returns float)
+r = 10 % 3     # = 1  (remainder)
+p = 2 ** 10    # = 1024  (exponentiation, not ^)</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Gotcha:</strong> In Python, <code>/</code> always returns a float. To get integer division use <code>//</code>. In Java, <code>10 / 3</code> already gives <code>3</code>.
+    </div>
+
+    <h3>float</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">pi = 3.14159
+sci = 1.5e10       # 15000000000.0  (scientific notation)
+
+# Same float precision gotcha as Java
+print(0.1 + 0.2)   # 0.30000000000000004
+
+# For money/precision: use decimal module
+from decimal import Decimal
+price = Decimal("9.99")   # exact decimal representation</code></pre>
+    </div>
+
+    <h3>str — immutable strings</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">String s1 = "hello";
+String s2 = 'h';      // char, not String
+// Multi-line (Java 15+):
+String text = """
+    line one
+    line two
+    """;
+// String is an object
+s1.length()           // 5
+s1.toUpperCase()      // "HELLO"</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">s1 = "hello"
+s2 = 'hello'    # single or double, identical
+
+# No separate char type — it's just len-1 str
+
+# Multi-line (built-in):
+text = """
+line one
+line two
+"""
+
+# Strings are objects with methods
+len(s1)              # 5  (function, not method)
+s1.upper()           # "HELLO"
+s1[0]                # 'h'  (indexing)
+s1[-1]               # 'o'  (last char — no ArrayIndexOutOfBounds)</code></pre>
+      </div>
+    </div>
+
+    <h3>bool</h3>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">boolean active = true;
+boolean closed = false;
+
+// Null check
+if (obj != null) { }</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">active = True     # capital T
+closed = False    # capital F
+
+# None is Python's null
+obj = None
+if obj is not None:   # prefer 'is not' for None checks
+    pass
+
+# Truthiness — Python is flexible:
+bool(0)       # False
+bool("")      # False
+bool([])      # False  (empty list)
+bool(None)    # False
+bool(1)       # True
+bool("hi")    # True</code></pre>
+      </div>
+    </div>
+
+    <div class="callout callout-teal">
+      <strong>Key insight:</strong> In Python, many things are "falsy" beyond just <code>False</code>. Zero, empty strings, empty collections, and <code>None</code> all evaluate to <code>False</code> in a boolean context. This is used heavily in idiomatic Python: <code>if items:</code> instead of <code>if items.size() > 0</code>.
+    </div>
+  </section>
+
+  <!-- ── F-STRINGS ── -->
+  <section>
+    <h2>4. f-strings</h2>
+
+    <p>f-strings (formatted string literals) are Python's way to embed expressions inside strings. Prefix a string with <code>f</code> and wrap any expression in <code>{}</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — multiple approaches</span>
+        <pre><code class="language-java">String name = "Alice";
+int age = 30;
+
+// Old: verbose
+"Hello, " + name + "!"
+
+// String.format
+String.format("Hello, %s! Age: %d", name, age)
+
+// Java 21 text block interpolation (preview)
+STR."Hello \{name}!"
+
+// MessageFormat
+MessageFormat.format(
+    "Hello, {0}!", name)</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — f-strings (Python 3.6+)</span>
+        <pre><code class="language-python">name = "Alice"
+age = 30
+
+# Simple variable
+f"Hello, {name}!"
+
+# Expression — anything goes inside {}
+f"Next year I'll be {age + 1}"
+
+# Method calls
+f"Upper: {name.upper()}"
+
+# Formatting numbers
+pi = 3.14159
+f"Pi is {pi:.2f}"          # "Pi is 3.14"
+f"Hex: {255:#x}"           # "Hex: 0xff"
+f"Thousands: {1000000:,}"  # "Thousands: 1,000,000"
+
+# Multi-line f-string
+msg = (
+    f"Name: {name}\n"
+    f"Age:  {age}"
+)</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>f-string debugging trick (Python 3.8+):</strong> Use <code>f"{variable=}"</code> to print both the name and value — great for quick debugging:
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">x = 42
+name = "Alice"
+pi = 3.14159
+
+print(f"{x=}")        # x=42
+print(f"{name=}")     # name='Alice'
+print(f"{pi=:.2f}")   # pi=3.14</code></pre>
+    </div>
+  </section>
+
+  <!-- ── PRINT AND INPUT ── -->
+  <section>
+    <h2>5. print() and input()</h2>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">System.out.println("Hello");
+System.out.print("No newline");
+System.out.printf("Pi: %.2f%n", 3.14);
+
+Scanner sc = new Scanner(System.in);
+String input = sc.nextLine();</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">print("Hello")                  # adds newline
+print("No newline", end="")     # override line ending
+print("Pi:", 3.14)              # auto-inserts space
+print("a", "b", "c", sep=", ") # "a, b, c"
+
+# Reading user input (always returns str)
+name = input("Enter your name: ")
+age = int(input("Enter age: "))  # cast to int manually</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Note:</strong> <code>input()</code> always returns a string. If you want a number, you must cast it explicitly with <code>int()</code> or <code>float()</code>. No automatic conversion like some languages do.
+    </div>
+
+    <h3>Putting it all together — a first real program</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python — hello.py</span>
+      <pre><code class="language-python"># hello.py — run with: python3 hello.py
+
+def main():
+    name = input("What's your name? ")
+    age = int(input("How old are you? "))
+
+    greeting = f"Hello, {name}!"
+    years_to_100 = 100 - age
+
+    print(greeting)
+    print(f"You'll turn 100 in {years_to_100} years.")
+    print(f"At that point, it'll be {2024 + years_to_100}.")
+
+main()</code></pre>
+    </div>
+  </section>
+
+  <!-- ── QUICK REFERENCE ── -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Integer arithmetic</div>
+        <code>10 // 3</code> → <code>3</code> (floor div)<br>
+        <code>10 / 3</code> → <code>3.333</code> (always float)<br>
+        <code>2 ** 8</code> → <code>256</code> (power, not XOR)
+        <p>Use <code>//</code> for int division, <code>**</code> for power</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Dynamic typing checks</div>
+        <code>type(x)</code> — returns type object<br>
+        <code>isinstance(x, int)</code> — preferred type check<br>
+        <code>isinstance(x, (int, float))</code> — multi-type
+        <p>Use <code>isinstance()</code> over <code>type(x) ==</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">String basics</div>
+        <code>"hi"</code> or <code>'hi'</code> — identical<br>
+        <code>"""multi\nline"""</code> — triple quote<br>
+        <code>s[0]</code>, <code>s[-1]</code> — indexing
+        <p>Strings are immutable, like Java</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">f-string formatting</div>
+        <code>f"{pi:.2f}"</code> — 2 decimal places<br>
+        <code>f"{n:,}"</code> — thousands separator<br>
+        <code>f"{n:05d}"</code> — zero-padded width 5<br>
+        <code>f"{x=}"</code> — debug: prints name+value
+        <p>Replaces String.format()</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Truthiness</div>
+        <code>False</code>: <code>0</code>, <code>""</code>, <code>[]</code>, <code>{}</code>, <code>None</code><br>
+        <code>True</code>: everything else
+        <p>Use <code>if items:</code> not <code>if len(items) > 0:</code></p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">None checks</div>
+        <code>x is None</code> — preferred<br>
+        <code>x is not None</code> — preferred<br>
+        <code>x == None</code> — works but avoid
+        <p>Use <code>is</code>/<code>is not</code> for None, not ==</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">print() options</div>
+        <code>print(a, b, sep=", ")</code> — custom separator<br>
+        <code>print("x", end="")</code> — no newline<br>
+        <code>print(f"{x=}")</code> — debug print
+        <p>Much simpler than System.out.println</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Type conversions</div>
+        <code>int("42")</code> → <code>42</code><br>
+        <code>float("3.14")</code> → <code>3.14</code><br>
+        <code>str(42)</code> → <code>"42"</code><br>
+        <code>bool(0)</code> → <code>False</code>
+        <p>Always explicit — no silent coercions</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">venv quick ref</div>
+        <code>python3 -m venv .venv</code> — create<br>
+        <code>source .venv/bin/activate</code> — activate<br>
+        <code>pip install &lt;pkg&gt;</code> — install<br>
+        <code>pip freeze > requirements.txt</code> — lock
+        <p>Always activate before installing packages</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── WRAP-UP ── -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Python is interpreted — <code>python3 file.py</code> runs directly, no compile step.</li>
+      <li>Always use <code>venv</code> for project-scoped dependencies — treat it like Maven's project-scoped deps.</li>
+      <li>Dynamic typing means the variable is just a label; the type lives on the value. Python doesn't enforce types at compile time — but type hints (Day 13) bring back tooling safety.</li>
+      <li><code>/</code> always returns a float; use <code>//</code> for integer division. <code>**</code> is power, not <code>^</code>.</li>
+      <li>f-strings are the idiomatic way to format strings — faster and clearer than <code>String.format()</code>.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 2</h4>
+      <ul>
+        <li>Open the Python REPL and experiment with all the arithmetic operators</li>
+        <li>Try assigning different types to the same variable and check with <code>type()</code></li>
+        <li>Write a small script that asks for name, age, and city, then prints a formatted introduction using f-strings</li>
+        <li>Test truthiness of various values: <code>bool(0)</code>, <code>bool("")</code>, <code>bool([])</code>, <code>bool(None)</code></li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 2: Control Flow + Comprehensions</strong><br>
+      You'll learn Python's <code>if/elif/else</code>, <code>for</code> loops that iterate over <em>anything</em>, and list comprehensions — which replace 90% of Java's for-loop-plus-add patterns with a single expressive line.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <span class="nav-btn disabled">← Previous</span>
+
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+
+  <a class="nav-btn" href="day2.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  // Done state
+  const DAY = 1;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  // Load state
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

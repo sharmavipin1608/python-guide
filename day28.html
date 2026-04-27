@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 28 — Project: Data Pipeline | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+    /* Project day: orange day badge */
+    .day-badge { background: #ff6b35; color: #fff; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 28 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Project</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>Project: Sales Data Pipeline</h1>
+  <p>Read raw messy CSV data, clean it with Pandas, analyze it across multiple dimensions, and output a clean data file plus a printed summary report. This is the core of every data engineering task.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Project Spec</h2>
+    <div class="spec-box">
+      <h3>What to build</h3>
+      <ul>
+        <li>Read <code>raw_sales.csv</code> (sample data provided below)</li>
+        <li>Clean: handle nulls, fix types, normalize column names, remove duplicates</li>
+        <li>Analyze: total revenue by region, top 5 products by revenue, monthly trend</li>
+        <li>Output: <code>clean_sales.csv</code> + a formatted terminal summary report</li>
+        <li>All in a single <code>pipeline.py</code> script with clear functions for each stage</li>
+      </ul>
+    </div>
+    <div class="stretch-box">
+      <h4>Stretch goals</h4>
+      <ul>
+        <li>Add a chart using matplotlib: bar chart of revenue by region</li>
+        <li>Add a <code>--input</code> CLI argument so the script works on any CSV</li>
+        <li>Write a pytest test suite for the <code>clean()</code> and <code>analyze()</code> functions</li>
+        <li>Export the summary to an Excel file with multiple sheets</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sample Data</h2>
+
+    <p>Copy and save as <code>raw_sales.csv</code> to use with the pipeline:</p>
+
+    <div class="python-block">
+      <span class="block-label">raw_sales.csv</span>
+      <pre><code class="language-python">Date,Region,Product,Units,Unit_Price,Rep
+2024-01-05,North,Widget A,10,29.99,Alice
+2024-01-12,South,Widget B,5,49.99,Bob
+2024-01-15,North,Widget A,8,29.99,Alice
+2024-01-20,EAST,Gadget X,3,99.99,Carol
+2024-02-03,North,Widget B,12,49.99,Dave
+2024-02-10,South,Gadget X,2,99.99,Bob
+2024-02-14,east,Widget A,6,29.99,Carol
+2024-02-20,North,Gadget Y,4,149.99,Alice
+2024-03-01,South,Widget A,,29.99,Eve
+2024-03-08,North,Widget B,9,49.99,Dave
+2024-03-12,West,Gadget X,7,99.99,Frank
+2024-03-19,west,Widget A,11,29.99,Frank
+2024-03-25,South,Gadget Y,3,149.99,Bob
+2024-04-02,East,Widget B,8,49.99,Carol
+2024-04-10,North,Gadget Y,5,149.99,Alice
+2024-04-15,South,Widget A,10,29.99,Eve
+2024-04-20,West,Widget B,6,49.99,Frank
+2024-04-28,East,Gadget X,4,99.99,Carol
+2024-05-05,North,Widget A,15,29.99,Dave
+2024-05-10,South,Gadget Y,2,149.99,Bob</code></pre>
+    </div>
+
+    <p>Notice the intentional data quality issues: inconsistent region casing (<code>EAST</code>, <code>east</code>, <code>East</code>), a missing <code>Units</code> value, and mixed date formats. The pipeline must handle all of these.</p>
+  </section>
+
+  <section>
+    <h2>pipeline.py — Full Implementation</h2>
+
+    <div class="file-label">📄 pipeline.py</div>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">"""
+Sales Data Pipeline
+Usage: python pipeline.py [--input raw_sales.csv]
+"""
+import sys
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
+
+# ── 1. Load ───────────────────────────────────────────────────────────────────
+
+def load(path: str | Path) -> pd.DataFrame:
+    """Load raw CSV with appropriate types."""
+    df = pd.read_csv(
+        path,
+        parse_dates=["Date"],
+        dtype={"Units": float, "Unit_Price": float},
+    )
+    print(f"Loaded {len(df):,} rows from {path}")
+    print(f"Missing values:\n{df.isna().sum()[df.isna().sum() > 0]}\n")
+    return df
+
+
+# ── 2. Clean ──────────────────────────────────────────────────────────────────
+
+def clean(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize, fix types, handle nulls, deduplicate."""
+    result = df.copy()
+
+    # Normalize column names: lowercase, underscores
+    result.columns = result.columns.str.lower().str.replace(" ", "_")
+
+    # Normalize string columns to title case
+    result["region"]  = result["region"].str.strip().str.title()
+    result["product"] = result["product"].str.strip()
+    result["rep"]     = result["rep"].str.strip()
+
+    # Fill missing units with median of same product
+    for product in result["product"].unique():
+        mask = result["product"] == product
+        median_units = result.loc[mask, "units"].median()
+        result.loc[mask & result["units"].isna(), "units"] = median_units
+
+    # Cast units to int now that nulls are filled
+    result["units"] = result["units"].astype(int)
+
+    # Derived column: total revenue per row
+    result["revenue"] = result["units"] * result["unit_price"]
+
+    # Add time columns for analysis
+    result["month"]   = result["date"].dt.to_period("M").astype(str)
+    result["quarter"] = result["date"].dt.to_period("Q").astype(str)
+
+    # Drop true duplicates (same date + region + product + rep)
+    before = len(result)
+    result = result.drop_duplicates(subset=["date", "region", "product", "rep"])
+    dropped = before - len(result)
+    if dropped:
+        print(f"Dropped {dropped} duplicate rows")
+
+    print(f"Clean dataset: {len(result):,} rows, {result['revenue'].sum():,.2f} total revenue\n")
+    return result
+
+
+# ── 3. Analyze ────────────────────────────────────────────────────────────────
+
+def analyze(df: pd.DataFrame) -> dict:
+    """Compute summary statistics. Returns dict of DataFrames."""
+
+    # Revenue by region
+    by_region = (
+        df.groupby("region")
+        .agg(
+            total_revenue=("revenue", "sum"),
+            total_units=("units",   "sum"),
+            transactions=("revenue", "count"),
+        )
+        .sort_values("total_revenue", ascending=False)
+        .round(2)
+    )
+
+    # Top 5 products by revenue
+    top_products = (
+        df.groupby("product")
+        .agg(
+            total_revenue=("revenue", "sum"),
+            total_units=("units",   "sum"),
+            avg_price=("unit_price", "mean"),
+        )
+        .sort_values("total_revenue", ascending=False)
+        .head(5)
+        .round(2)
+    )
+
+    # Monthly revenue trend
+    monthly = (
+        df.groupby("month")["revenue"]
+        .sum()
+        .reset_index()
+        .rename(columns={"revenue": "monthly_revenue"})
+        .round(2)
+    )
+    # Add month-over-month growth %
+    monthly["mom_growth"] = monthly["monthly_revenue"].pct_change() * 100
+    monthly["mom_growth"] = monthly["mom_growth"].round(1)
+
+    # Rep performance
+    by_rep = (
+        df.groupby("rep")["revenue"]
+        .agg(["sum", "mean", "count"])
+        .rename(columns={"sum": "total", "mean": "avg_per_sale", "count": "sales"})
+        .sort_values("total", ascending=False)
+        .round(2)
+    )
+
+    return {
+        "by_region":    by_region,
+        "top_products": top_products,
+        "monthly":      monthly,
+        "by_rep":       by_rep,
+    }
+
+
+# ── 4. Report ─────────────────────────────────────────────────────────────────
+
+def print_report(df: pd.DataFrame, stats: dict) -> None:
+    """Print a formatted terminal summary."""
+    total_rev  = df["revenue"].sum()
+    total_units = df["units"].sum()
+    date_range  = f"{df['date'].min().date()} → {df['date'].max().date()}"
+
+    print("=" * 60)
+    print("  SALES SUMMARY REPORT")
+    print("=" * 60)
+    print(f"  Period:        {date_range}")
+    print(f"  Total Revenue: ${total_rev:>12,.2f}")
+    print(f"  Total Units:   {total_units:>12,}")
+    print(f"  Transactions:  {len(df):>12,}")
+
+    print("\n── Revenue by Region ──────────────────────────────────")
+    for region, row in stats["by_region"].iterrows():
+        bar = "█" * int(row["total_revenue"] / total_rev * 30)
+        print(f"  {region:<10} ${row['total_revenue']:>8,.0f}  {bar}")
+
+    print("\n── Top Products ───────────────────────────────────────")
+    print(f"  {'Product':<12} {'Revenue':>10}  {'Units':>7}  {'Avg Price':>10}")
+    print(f"  {'-'*12} {'-'*10}  {'-'*7}  {'-'*10}")
+    for prod, row in stats["top_products"].iterrows():
+        print(f"  {prod:<12} ${row['total_revenue']:>9,.2f}  {row['total_units']:>7,}  ${row['avg_price']:>9.2f}")
+
+    print("\n── Monthly Revenue Trend ──────────────────────────────")
+    for _, row in stats["monthly"].iterrows():
+        growth = f"({row['mom_growth']:+.1f}%)" if pd.notna(row["mom_growth"]) else ""
+        print(f"  {row['month']}   ${row['monthly_revenue']:>8,.2f}  {growth}")
+
+    print("\n── Rep Performance ────────────────────────────────────")
+    for rep, row in stats["by_rep"].iterrows():
+        print(f"  {rep:<8} ${row['total']:>8,.2f}  ({row['sales']} sales, avg ${row['avg_per_sale']:,.2f})")
+
+    print("\n" + "=" * 60)
+
+
+# ── 5. Export ─────────────────────────────────────────────────────────────────
+
+def export(df: pd.DataFrame, stats: dict, output_dir: Path) -> None:
+    """Write clean CSV and summary sheets to disk."""
+    output_dir.mkdir(exist_ok=True)
+
+    clean_path = output_dir / "clean_sales.csv"
+    df.to_csv(clean_path, index=False)
+    print(f"\nClean data → {clean_path}")
+
+    summary_path = output_dir / "summary.xlsx"
+    with pd.ExcelWriter(summary_path) as writer:
+        for sheet_name, frame in stats.items():
+            frame.to_excel(writer, sheet_name=sheet_name)
+    print(f"Summary    → {summary_path}")
+
+
+# ── Entry point ───────────────────────────────────────────────────────────────
+
+def main() -> None:
+    input_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("raw_sales.csv")
+
+    if not input_path.exists():
+        print(f"Error: {input_path} not found", file=sys.stderr)
+        sys.exit(1)
+
+    raw      = load(input_path)
+    clean_df = clean(raw)
+    stats    = analyze(clean_df)
+    print_report(clean_df, stats)
+    export(clean_df, stats, Path("output"))
+
+
+if __name__ == "__main__":
+    main()</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Key Pipeline Patterns</h2>
+
+    <h3>Stage functions — pure transformations</h3>
+    <p>Each stage (<code>load</code>, <code>clean</code>, <code>analyze</code>) takes a DataFrame and returns a DataFrame. They're pure: no global state, no side effects except logging. This makes each stage independently testable.</p>
+
+    <div class="callout-teal">
+      <strong>Java parallel:</strong> This is the same pipeline pattern you'd use in Spring Batch — Reader → Processor → Writer. Each step is a pure transformation function, easy to test and easy to swap out.
+    </div>
+
+    <h3>Stretch: Add a matplotlib chart</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+
+def plot_revenue_by_region(by_region: pd.DataFrame, output_dir: Path) -> None:
+    """Save a bar chart of revenue by region."""
+    fig, ax = plt.subplots(figsize=(8, 4))
+    fig.patch.set_facecolor("#0d0d0d")
+    ax.set_facecolor("#141414")
+
+    regions = by_region.index
+    revenues = by_region["total_revenue"]
+    bars = ax.bar(regions, revenues, color="#f0e040", width=0.6)
+
+    ax.set_title("Revenue by Region", color="#f0e040", fontsize=14, pad=16)
+    ax.set_xlabel("Region", color="#888")
+    ax.set_ylabel("Revenue ($)", color="#888")
+    ax.tick_params(colors="#888")
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"${x:,.0f}"))
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#2a2a2a")
+
+    path = output_dir / "revenue_by_region.png"
+    fig.savefig(path, dpi=150, bbox_inches="tight", facecolor="#0d0d0d")
+    plt.close(fig)
+    print(f"Chart      → {path}")</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Read with type hints</div>
+        <code>pd.read_csv(f, parse_dates=["date"], dtype={"amt": float})</code>
+        <p>Parse dates and enforce dtypes at load time — cheaper than fixing later.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Fill nulls by group</div>
+        <code>df.loc[mask & df["col"].isna(), "col"] = df.loc[mask, "col"].median()</code>
+        <p>Fill missing values with the group's own median, not the overall median.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Derived column</div>
+        <code>df["revenue"] = df["units"] * df["price"]</code>
+        <p>Vectorized — no loop. Result is a new column.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Multi-agg groupby</div>
+        <code>df.groupby("col").agg(total=("rev","sum"), count=("rev","count"))</code>
+        <p>Named aggregations keep the output column names clean.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">pct_change</div>
+        <code>series.pct_change() * 100</code>
+        <p>Month-over-month or period-over-period growth %. First value is NaN.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Multi-sheet Excel</div>
+        <code>with pd.ExcelWriter("f.xlsx") as w: df.to_excel(w, sheet_name="x")</code>
+        <p>Each DataFrame goes to a separate sheet. Requires openpyxl.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Separate your pipeline into pure stage functions: <code>load</code> → <code>clean</code> → <code>analyze</code> → <code>report</code> → <code>export</code>. Each takes a DataFrame and returns one — independently testable, composable, and easy to debug by inspecting intermediate outputs.</li>
+      <li>Fix data quality at the boundary — normalize casing, fill nulls, fix types, and drop duplicates in <code>clean()</code>. Downstream analysis code should be able to trust that the data is valid.</li>
+      <li>Derived columns (<code>revenue = units * price</code>) are free to add — vectorized, no loop. Add them in the clean stage so they're available everywhere downstream.</li>
+      <li>Named aggregations (<code>total_revenue=("revenue", "sum")</code>) give you clean output column names in one call — much cleaner than renaming after the fact.</li>
+      <li>This pipeline pattern — load, clean, analyze, export — is the skeleton of every data engineering job, Airflow DAG, and data science notebook you'll encounter. The tools change; the structure stays the same.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Extend the project</h4>
+      <ul>
+        <li>Add unit tests for <code>clean()</code>: assert that nulls are filled, casing is normalized, and <code>revenue</code> is correctly computed</li>
+        <li>Add a quarter-over-quarter analysis section to the report</li>
+        <li>Add the matplotlib chart (code provided above) and save it to the output directory</li>
+        <li>Add a <code>--top-n</code> CLI argument to control how many top products are shown</li>
+        <li>Add an anomaly detection step: flag rows where revenue is more than 3 standard deviations from the product mean</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Next — Day 29: FastAPI Basics</strong><br>
+      Phase 3 begins. FastAPI is Python's Spring Boot — you define routes with type hints, request/response bodies with Pydantic models, and get automatic OpenAPI docs at <code>/docs</code>. It's faster to build and faster to run than most Java frameworks.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day27.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day29.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 28;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

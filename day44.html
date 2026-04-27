@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 44 — Metaclasses + __slots__ | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 4 — Advanced: purple badge */
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 44 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 44</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Metaclasses + __slots__</h1>
+  <p>Metaclasses are the mechanism that creates Python classes — understanding them demystifies how ORMs, dataclasses, and ABCs actually work. <code>__slots__</code> is the practical optimization for memory-efficient objects at scale.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>How Python creates classes — type() as a metaclass <span style="color:#555">~15 min</span></li>
+        <li>Writing a custom metaclass <span style="color:#555">~20 min</span></li>
+        <li>Real-world metaclass use cases (ORMs, registries) <span style="color:#555">~15 min</span></li>
+        <li>__slots__ — restricting and optimizing instance attributes <span style="color:#555">~15 min</span></li>
+        <li>Benchmarking __slots__ vs regular class <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>Metaclass</strong> → Java has no direct equivalent — closest is annotation processors that generate code at compile time</li>
+        <li><strong>type(name, bases, attrs)</strong> → <code>Class.forName()</code> + reflection-based class construction</li>
+        <li><strong>__init_subclass__</strong> → a lighter alternative to metaclasses, like a hook called when a subclass is defined</li>
+        <li><strong>__slots__</strong> → like declaring fields <code>final</code> in a struct — no extra attributes, fixed memory layout</li>
+        <li><strong>Metaclass for ORM</strong> → same role as Hibernate's <code>@Entity</code> + proxy generation at load time</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. How Python Creates Classes</h2>
+    <p>In Python, everything is an object — including classes. When you write <code>class Foo:</code>, Python calls the metaclass (by default <code>type</code>) to create the class object. <code>type</code> is both a function and a class.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — type() as a class factory</span>
+      <pre><code class="language-python"># The usual way
+class Point:
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+    def distance(self) -> float:
+        return (self.x**2 + self.y**2) ** 0.5
+
+# Exactly equivalent — type(name, bases, namespace)
+Point = type(
+    "Point",
+    (object,),
+    {
+        "__init__": lambda self, x, y: (setattr(self, "x", x), setattr(self, "y", y)),
+        "distance": lambda self: (self.x**2 + self.y**2) ** 0.5,
+    }
+)
+
+p = Point(3, 4)
+print(p.distance())    # 5.0
+
+# Every class has a __class__ and a __class__.__class__
+print(type(p))             # <class '__main__.Point'>
+print(type(Point))         # <class 'type'>  ← Point's metaclass is type
+print(type(type))          # <class 'type'>  ← type is its own metaclass</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>The metaclass call sequence when Python sees <code>class Foo(Base): ...</code>:</strong><br>
+      1. Collect the class body into a namespace dict<br>
+      2. Determine the metaclass (default: <code>type</code>)<br>
+      3. Call <code>metaclass(name, bases, namespace)</code> → this returns the class object<br>
+      4. Bind the result to the name <code>Foo</code>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Writing a Custom Metaclass</h2>
+    <p>A metaclass is a class that inherits from <code>type</code>. You override <code>__new__</code> or <code>__init__</code> to customize class creation.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — singleton via metaclass</span>
+      <pre><code class="language-python">class SingletonMeta(type):
+    """Metaclass that makes every class using it a singleton."""
+    _instances: dict = {}
+
+    def __call__(cls, *args, **kwargs):
+        # __call__ is invoked when you do MyClass(...)
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+class DatabaseConnection(metaclass=SingletonMeta):
+    def __init__(self, url: str):
+        self.url = url
+        self.connected = False
+
+    def connect(self):
+        self.connected = True
+
+db1 = DatabaseConnection("postgresql://localhost/mydb")
+db2 = DatabaseConnection("postgresql://other/db")   # ignored — same instance returned
+print(db1 is db2)      # True
+print(db2.url)         # "postgresql://localhost/mydb"</code></pre>
+    </div>
+
+    <h3>Auto-registering Subclasses</h3>
+    <div class="python-block">
+      <span class="block-label">Python — plugin registry via metaclass</span>
+      <pre><code class="language-python">class PluginMeta(type):
+    """Automatically registers every subclass in a registry."""
+    registry: dict[str, type] = {}
+
+    def __init__(cls, name, bases, namespace):
+        super().__init__(name, bases, namespace)
+        if bases:    # don't register the base class itself
+            PluginMeta.registry[name] = cls
+
+class BaseExporter(metaclass=PluginMeta):
+    def export(self, data: list) -> str:
+        raise NotImplementedError
+
+class CsvExporter(BaseExporter):
+    def export(self, data: list) -> str:
+        return ",".join(str(x) for x in data)
+
+class JsonExporter(BaseExporter):
+    def export(self, data: list) -> str:
+        import json; return json.dumps(data)
+
+# After defining the classes, the registry is populated automatically
+print(PluginMeta.registry)
+# {"CsvExporter": <class CsvExporter>, "JsonExporter": <class JsonExporter>}
+
+# Factory function using the registry
+def get_exporter(name: str) -> BaseExporter:
+    cls = PluginMeta.registry.get(name)
+    if not cls:
+        raise ValueError(f"Unknown exporter: {name}")
+    return cls()</code></pre>
+    </div>
+
+    <h3>__init_subclass__ — The Lighter Alternative</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># For many metaclass use cases, __init_subclass__ is simpler
+class BaseHandler:
+    _registry: dict[str, type] = {}
+
+    def __init_subclass__(cls, route: str, **kwargs):
+        super().__init_subclass__(**kwargs)
+        BaseHandler._registry[route] = cls
+        print(f"Registered handler {cls.__name__} for route '{route}'")
+
+class HomeHandler(BaseHandler, route="/"):
+    def handle(self): return "Home page"
+
+class AboutHandler(BaseHandler, route="/about"):
+    def handle(self): return "About page"
+
+# Registered automatically at class definition time
+print(BaseHandler._registry)
+# {"/": HomeHandler, "/about": AboutHandler}
+
+# Prefer __init_subclass__ over metaclasses when you don't need
+# to intercept class creation itself (just subclass registration)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Real-world Metaclass: ORM-style</h2>
+    <p>SQLAlchemy's declarative base, Django's models, and Python's <code>@dataclass</code> all use metaclasses (or <code>__init_subclass__</code>) under the hood. Here's a simplified ORM field-declaration system to show the pattern.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — mini ORM metaclass</span>
+      <pre><code class="language-python">class Field:
+    def __init__(self, field_type: type, required: bool = True):
+        self.field_type = field_type
+        self.required = required
+
+class ModelMeta(type):
+    def __new__(mcs, name, bases, namespace):
+        fields = {
+            k: v for k, v in namespace.items()
+            if isinstance(v, Field)
+        }
+        namespace["_fields"] = fields
+        # Generate __init__ that validates types
+        def __init__(self, **kwargs):
+            for fname, fdef in self._fields.items():
+                value = kwargs.get(fname)
+                if fdef.required and value is None:
+                    raise ValueError(f"{fname} is required")
+                if value is not None and not isinstance(value, fdef.field_type):
+                    raise TypeError(f"{fname} must be {fdef.field_type.__name__}")
+                setattr(self, fname, value)
+        namespace["__init__"] = __init__
+        return super().__new__(mcs, name, bases, namespace)
+
+class Model(metaclass=ModelMeta):
+    pass
+
+class User(Model):
+    id = Field(int)
+    name = Field(str)
+    email = Field(str)
+
+u = User(id=1, name="Vipin", email="v@example.com")
+print(u.name)      # "Vipin"
+# User(id="bad")  → TypeError: id must be int</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. __slots__ — Memory-Efficient Objects</h2>
+    <p>By default, Python stores instance attributes in a <code>__dict__</code> — a hash table. For objects you create millions of, this overhead adds up. <code>__slots__</code> replaces the dict with a fixed set of descriptors, reducing memory by 40–60%.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — __slots__ basics</span>
+      <pre><code class="language-python">class Point:
+    """Regular class — each instance has a __dict__."""
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+
+class PointSlots:
+    """Slotted class — no __dict__, fixed attributes only."""
+    __slots__ = ("x", "y")
+
+    def __init__(self, x: float, y: float):
+        self.x = x
+        self.y = y
+
+p1 = Point(1.0, 2.0)
+p2 = PointSlots(1.0, 2.0)
+
+# Regular class has a __dict__
+print(p1.__dict__)              # {"x": 1.0, "y": 2.0}
+
+# Slotted class does not
+# print(p2.__dict__)            # AttributeError!
+
+# Can't add arbitrary attributes to slotted instances
+p1.z = 3.0                      # works — dict is flexible
+# p2.z = 3.0                    # AttributeError: z not in __slots__</code></pre>
+    </div>
+
+    <h3>Memory and Speed Benchmark</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import sys
+import timeit
+
+# Memory comparison
+p_regular = Point(1.0, 2.0)
+p_slotted = PointSlots(1.0, 2.0)
+
+print(sys.getsizeof(p_regular))         # ~48 bytes (just the object header)
+print(sys.getsizeof(p_regular.__dict__))# ~232 bytes (the dict overhead)
+print(sys.getsizeof(p_slotted))         # ~56 bytes (slots are inline)
+# Total regular: ~280 bytes vs slotted: ~56 bytes — 5x difference
+
+# Speed comparison — attribute access
+regular_time = timeit.timeit(
+    "p.x", setup="from __main__ import Point; p = Point(1.0, 2.0)", number=10_000_000
+)
+slotted_time = timeit.timeit(
+    "p.x", setup="from __main__ import PointSlots; p = PointSlots(1.0, 2.0)", number=10_000_000
+)
+print(f"Regular: {regular_time:.3f}s")
+print(f"Slotted: {slotted_time:.3f}s")
+# Slotted is typically 20-30% faster for attribute access</code></pre>
+    </div>
+
+    <h3>__slots__ with Inheritance</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class Animal:
+    __slots__ = ("name", "age")
+    def __init__(self, name: str, age: int):
+        self.name = name
+        self.age = age
+
+class Dog(Animal):
+    # Add slots for Dog-specific attributes
+    # Don't redeclare parent slots — they're inherited
+    __slots__ = ("breed",)
+
+    def __init__(self, name: str, age: int, breed: str):
+        super().__init__(name, age)
+        self.breed = breed
+
+d = Dog("Rex", 3, "Labrador")
+print(d.name, d.breed)    # works — both parent and child slots available
+
+# WARNING: if ANY class in the hierarchy doesn't define __slots__,
+# a __dict__ is added back and the memory savings are lost.
+class BadBase:
+    pass   # no __slots__
+
+class BadDog(BadBase):
+    __slots__ = ("breed",)   # useless — BadBase added __dict__ back</code></pre>
+    </div>
+
+    <h3>__slots__ with dataclass</h3>
+    <div class="python-block">
+      <span class="block-label">Python 3.10+</span>
+      <pre><code class="language-python">from dataclasses import dataclass
+
+# slots=True generates __slots__ automatically — best of both worlds
+@dataclass(slots=True, frozen=True)
+class Coordinate:
+    lat: float
+    lon: float
+    altitude: float = 0.0
+
+c = Coordinate(lat=37.7749, lon=-122.4194)
+print(c.lat)
+# c.lat = 1.0  → FrozenInstanceError (frozen=True)
+# c.extra = 1  → AttributeError (slots=True)
+# Memory-efficient + immutable + auto-generated __init__/__repr__/__eq__</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Create class dynamically</div>
+        <code>MyClass = type("MyClass", (Base,), {"attr": value})</code>
+        <p>type() is the default metaclass — same as writing class MyClass(Base)</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Custom metaclass</div>
+        <code>class Meta(type):<br>  def __new__(mcs, name, bases, ns): ...</code>
+        <p>Override __new__ to intercept class creation</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Use metaclass</div>
+        <code>class MyClass(metaclass=Meta): ...</code>
+        <p>metaclass= keyword argument in class definition</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Subclass hook</div>
+        <code>def __init_subclass__(cls, **kw): ...</code>
+        <p>Called when a subclass is defined; simpler than metaclass for registration</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Define slots</div>
+        <code>__slots__ = ("x", "y")</code>
+        <p>Class-level tuple of allowed attribute names; removes __dict__</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Dataclass with slots</div>
+        <code>@dataclass(slots=True)</code>
+        <p>Python 3.10+ — auto-generates __slots__ from field definitions</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Memory saving</div>
+        <code>sys.getsizeof(obj)</code>
+        <p>Measure object size; regular class ≈ 5× more memory than slotted</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Metaclass pitfall</div>
+        <code># Don't use metaclasses for simple class modification</code>
+        <p>Use decorators or __init_subclass__ first; metaclasses add complexity</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li><code>type</code> is Python's built-in metaclass. Every class is an instance of <code>type</code>. Metaclasses let you customize what happens when a class is <em>defined</em> — not when it's instantiated.</li>
+      <li>Most metaclass use cases can be replaced with <code>__init_subclass__</code>, which is simpler and more readable. Reach for metaclasses only when you need to intercept or transform the class namespace itself.</li>
+      <li><code>__slots__</code> removes the per-instance <code>__dict__</code> and replaces it with fixed descriptors. For classes with millions of instances, this is a 3–5× memory reduction with a 20–30% attribute access speedup.</li>
+      <li>If any class in an inheritance chain doesn't define <code>__slots__</code>, a <code>__dict__</code> is silently added back. You lose all the memory savings. Apply <code>__slots__</code> consistently throughout the hierarchy.</li>
+      <li><code>@dataclass(slots=True)</code> (Python 3.10+) is the pragmatic choice — you get slot efficiency without manually writing <code>__slots__</code> or a custom <code>__init__</code>.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 45</h4>
+      <ul>
+        <li>Write a metaclass that validates all methods in a class have type annotations — raise <code>TypeError</code> at class definition time if any are missing</li>
+        <li>Benchmark regular vs <code>__slots__</code> class with 1 million instances using <code>tracemalloc</code></li>
+        <li>Add <code>slots=True</code> to a <code>@dataclass</code> and verify you can't add unexpected attributes</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 45 — Python Internals:</strong> How does CPython actually work? The GIL deep dive, reference counting, garbage collection cycles, Python bytecode, and the object model. Understanding these helps you write better code and explain Python's behavior confidently.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day43.html" class="nav-btn">← Day 43: ABCs + Protocols</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day45.html" class="nav-btn">Day 45: Python Internals →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-44-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-44-done') === 'true';
+    localStorage.setItem('day-44-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

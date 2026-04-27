@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 45 — Python Internals | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 4 — Advanced: purple badge */
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 45 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 45</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Python Internals</h1>
+  <p>The GIL, reference counting, garbage collection, bytecode, object identity — understanding CPython's internals explains Python's quirks and lets you make better architectural decisions, especially around concurrency and memory.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>The GIL deep dive — why it exists and CPython specifics <span style="color:#555">~15 min</span></li>
+        <li>Reference counting and object lifecycle <span style="color:#555">~15 min</span></li>
+        <li>Garbage collection — detecting reference cycles <span style="color:#555">~10 min</span></li>
+        <li>Object identity vs equality — id(), is, == <span style="color:#555">~10 min</span></li>
+        <li>Python bytecode with dis module <span style="color:#555">~15 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>GIL</strong> → no JVM equivalent — the JVM has true thread-level parallelism for CPU work</li>
+        <li><strong>Reference counting</strong> → JVM uses tracing GC (mark-and-sweep); Python uses refcount + cyclic GC</li>
+        <li><strong>gc module</strong> → like <code>System.gc()</code> — you can trigger it, but usually shouldn't</li>
+        <li><strong>id(obj)</strong> → <code>System.identityHashCode(obj)</code> — memory address / identity</li>
+        <li><strong>dis module</strong> → <code>javap -c MyClass.class</code> — bytecode disassembly</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. The GIL — Global Interpreter Lock</h2>
+    <p>The GIL is a mutex that allows only one thread to execute Python bytecode at a time within a single CPython process. It's the most misunderstood aspect of Python for developers coming from Java.</p>
+
+    <div class="diagram-box">
+      JVM (Java):
+        Thread 1 ──── CPU core 1  ┐
+        Thread 2 ──── CPU core 2  ├─ true parallel CPU execution
+        Thread 3 ──── CPU core 3  ┘
+
+      CPython (Python — GIL present):
+        Thread 1 ─┐
+        Thread 2 ─┤─ GIL ──── CPU core 1  ← only one at a time
+        Thread 3 ─┘
+        (threads take turns holding the GIL every ~5ms)
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — GIL impact on CPU-bound work</span>
+      <pre><code class="language-python">import threading
+import time
+
+def cpu_bound(n: int) -> int:
+    """Pure Python CPU work — affected by GIL."""
+    total = 0
+    for i in range(n):
+        total += i * i
+    return total
+
+N = 50_000_000
+
+# Single thread
+start = time.perf_counter()
+cpu_bound(N)
+single_time = time.perf_counter() - start
+
+# Two threads — you'd expect 2x speedup; you won't get it
+start = time.perf_counter()
+t1 = threading.Thread(target=cpu_bound, args=(N // 2,))
+t2 = threading.Thread(target=cpu_bound, args=(N // 2,))
+t1.start(); t2.start()
+t1.join(); t2.join()
+thread_time = time.perf_counter() - start
+
+print(f"Single: {single_time:.2f}s")
+print(f"Two threads: {thread_time:.2f}s")
+# Two threads is roughly the SAME as single — GIL prevents true parallel CPU work</code></pre>
+    </div>
+
+    <h3>What the GIL Does NOT Block</h3>
+    <div class="python-block">
+      <span class="block-label">Python — I/O releases the GIL</span>
+      <pre><code class="language-python">import threading
+import urllib.request
+import time
+
+def fetch(url: str) -> None:
+    # During network I/O, the GIL is released — other threads run freely
+    urllib.request.urlopen(url).read()
+
+urls = ["https://httpbin.org/delay/1"] * 5
+
+# Sequential: 5 seconds
+start = time.perf_counter()
+for url in urls:
+    fetch(url)
+print(f"Sequential: {time.perf_counter() - start:.1f}s")   # ~5s
+
+# Threaded: ~1 second — GIL released during I/O
+start = time.perf_counter()
+threads = [threading.Thread(target=fetch, args=(url,)) for url in urls]
+for t in threads: t.start()
+for t in threads: t.join()
+print(f"Threaded: {time.perf_counter() - start:.1f}s")    # ~1s</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>GIL summary:</strong> Threads are fine for I/O-bound work (network, file, DB). For CPU-bound work, use <code>multiprocessing</code> (separate processes, each with their own GIL) or C extensions (NumPy, Pandas) which release the GIL during heavy computation. Python 3.13+ has an experimental free-threaded mode (no GIL).
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Reference Counting</h2>
+    <p>CPython uses reference counting as its primary memory management strategy. Every object has a <code>ob_refcnt</code> field. When it drops to zero, the object is immediately deallocated — no GC pause needed for most objects.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — reference counting</span>
+      <pre><code class="language-python">import sys
+
+x = []               # refcount = 1 (x holds a reference)
+y = x                # refcount = 2 (x and y both point to the list)
+z = [x]              # refcount = 3 (x, y, and z[0] all point to it)
+
+print(sys.getrefcount(x))   # 4 — getrefcount itself adds 1 temporarily
+
+del y                # refcount drops to 3
+del z                # refcount drops to 2 (z[0] also dropped)
+del x                # refcount drops to 0 → list is immediately freed
+
+# Small integer caching — CPython caches -5 to 256
+a = 256
+b = 256
+print(a is b)   # True — same object (cached)
+
+a = 257
+b = 257
+print(a is b)   # False — different objects (not cached)
+                # This is why you should never use 'is' for equality checks</code></pre>
+    </div>
+
+    <h3>Weak References</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import weakref
+
+class Cache:
+    pass
+
+obj = Cache()
+ref = weakref.ref(obj)      # doesn't increment refcount
+
+print(ref())                # returns the object if alive
+del obj
+print(ref())                # None — object was collected
+
+# WeakValueDictionary — values collected when no other references exist
+cache = weakref.WeakValueDictionary()
+task = Cache()
+cache["key"] = task
+print(cache.get("key"))     # Cache object
+del task
+print(cache.get("key"))     # None — automatically removed</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Garbage Collection — Cyclic References</h2>
+    <p>Reference counting fails for cycles — two objects that reference each other never reach refcount zero. CPython has a separate cyclic garbage collector for this.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import gc
+
+# Create a reference cycle
+class Node:
+    def __init__(self, name: str):
+        self.name = name
+        self.next: "Node | None" = None
+
+a = Node("A")
+b = Node("B")
+a.next = b          # a → b
+b.next = a          # b → a  ← cycle!
+
+# Delete external references
+del a, del b
+# Both still have refcount > 0 because of each other
+# They will NOT be collected by refcounting alone
+
+# Force cyclic GC
+gc.collect()        # finds and collects cycles
+# Now both are freed
+
+# GC stats
+print(gc.get_count())       # (gen0, gen1, gen2) object counts
+print(gc.get_threshold())   # collection thresholds
+gc.disable()                # turn off cyclic GC (if refcounting is enough for your app)
+
+# Find what's keeping an object alive
+import gc
+class Leaking:
+    pass
+
+obj = Leaking()
+print(gc.get_referrers(obj))   # lists all objects that reference obj</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>tracemalloc</strong> — the practical tool for finding memory leaks:
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import tracemalloc
+
+tracemalloc.start()
+
+# ... run your code ...
+data = [list(range(1000)) for _ in range(1000)]
+
+snapshot = tracemalloc.take_snapshot()
+top_stats = snapshot.statistics("lineno")
+
+print("Top 5 memory allocations:")
+for stat in top_stats[:5]:
+    print(stat)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Object Identity vs Equality</h2>
+    <p>This trips up Java developers because <code>==</code> means different things in the two languages.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">String a = new String("hello");
+String b = new String("hello");
+
+a == b;          // false — reference identity
+a.equals(b);     // true — value equality
+
+Integer x = 127;
+Integer y = 127;
+x == y;          // true — cached
+x = 128; y = 128;
+x == y;          // false — not cached</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">a = "hello"
+b = "hello"
+a is b      # True — string interning (CPython optimization)
+a == b      # True — value equality
+
+a = ["x"]
+b = ["x"]
+a is b      # False — different list objects
+a == b      # True — same contents
+
+# id() returns the memory address (identity)
+print(id(a), id(b))   # different numbers
+
+# RULE: use == for value comparison, 'is' only for None/True/False
+x = None
+if x is None:    # correct idiom
+    pass
+if x == None:    # works but wrong — can be overridden by __eq__
+    pass</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Python Bytecode with dis</h2>
+    <p>CPython compiles Python to an intermediate bytecode before executing it. The <code>dis</code> module lets you inspect this bytecode — useful for understanding what Python actually does and explaining performance differences.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import dis
+
+def add(x, y):
+    return x + y
+
+dis.dis(add)
+# Output:
+#   2           0 RESUME                   0
+#   3           2 LOAD_FAST                0 (x)
+#               4 LOAD_FAST                1 (y)
+#               6 BINARY_OP               0 (+)
+#              10 RETURN_VALUE
+
+# Disassemble a comprehension
+dis.dis(compile("[x*2 for x in range(10)]", "", "eval"))
+
+# Compare: is vs ==
+def identity_check(x): return x is None
+def equality_check(x): return x == None
+dis.dis(identity_check)   # IS_OP — single bytecode instruction
+dis.dis(equality_check)   # COMPARE_OP — potentially calls __eq__</code></pre>
+    </div>
+
+    <h3>Code Objects and Compilation</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">def factorial(n: int) -> int:
+    if n <= 1:
+        return 1
+    return n * factorial(n - 1)
+
+code = factorial.__code__
+print(code.co_varnames)    # ('n',) — local variable names
+print(code.co_consts)      # (None, 1) — constants in the function
+print(code.co_filename)    # source file
+print(code.co_firstlineno) # line number where function starts
+
+# .pyc files are cached bytecode — Python skips re-parsing if source unchanged
+# __pycache__/module.cpython-312.pyc
+
+# Force recompile
+import py_compile
+py_compile.compile("mymodule.py")</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">GIL rule</div>
+        <code>threads for I/O, multiprocessing for CPU</code>
+        <p>GIL is released during I/O; CPU-bound threads don't benefit from multi-core</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Reference count</div>
+        <code>sys.getrefcount(obj)</code>
+        <p>Returns current refcount (+1 for the getrefcount call itself)</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Force GC</div>
+        <code>import gc; gc.collect()</code>
+        <p>Collects cyclic garbage; usually not needed in normal code</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Find referrers</div>
+        <code>gc.get_referrers(obj)</code>
+        <p>Lists all objects that hold a reference to obj — debug memory leaks</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Identity check</div>
+        <code>x is None / x is True / x is False</code>
+        <p>Use 'is' only for singletons; use == for everything else</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Object address</div>
+        <code>id(obj)</code>
+        <p>Memory address in CPython; uniqueness only guaranteed while object is alive</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Disassemble function</div>
+        <code>import dis; dis.dis(my_function)</code>
+        <p>Shows CPython bytecode instructions</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Memory profiling</div>
+        <code>import tracemalloc; tracemalloc.start()</code>
+        <p>Track allocations by line; take_snapshot() to compare before/after</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Weak reference</div>
+        <code>import weakref; ref = weakref.ref(obj)</code>
+        <p>Doesn't prevent collection; ref() returns None after obj is freed</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>The GIL means Python threads don't achieve CPU parallelism. This is by design — it makes CPython's C internals simpler and thread-safe without fine-grained locking. Use <code>multiprocessing</code> for CPU work, threads for I/O.</li>
+      <li>Reference counting frees most objects immediately when they go out of scope — no GC pause. The cyclic garbage collector only runs for objects involved in reference cycles, which are much rarer.</li>
+      <li><code>is</code> checks object identity (same memory address). <code>==</code> checks value equality (calls <code>__eq__</code>). Only use <code>is</code> for <code>None</code>, <code>True</code>, and <code>False</code>.</li>
+      <li>Integer caching (-5 to 256) and string interning are CPython optimizations. Don't rely on them — they're implementation details that can change. Never use <code>is</code> to compare integers or strings.</li>
+      <li><code>dis.dis(func)</code> is surprisingly readable and useful for understanding why two implementations have different performance characteristics. If you're confused why something is slow, look at its bytecode.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 46</h4>
+      <ul>
+        <li>Use <code>sys.getrefcount()</code> to trace how refcount changes as you assign, copy, and delete references</li>
+        <li>Create a reference cycle and verify <code>gc.collect()</code> frees it using <code>tracemalloc</code></li>
+        <li>Use <code>dis.dis()</code> on a list comprehension vs equivalent for-loop — compare the bytecode</li>
+        <li>Benchmark <code>is None</code> vs <code>== None</code> with timeit — observe the bytecode difference explains the speed difference</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 46 — Performance + Profiling:</strong> Now that you understand the internals, let's measure. cProfile for function-level hotspots, line_profiler for line-by-line analysis, memory_profiler for allocations, and timeit for micro-benchmarks.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day44.html" class="nav-btn">← Day 44: Metaclasses</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day46.html" class="nav-btn">Day 46: Performance →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-45-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-45-done') === 'true';
+    localStorage.setItem('day-45-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

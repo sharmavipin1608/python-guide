@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 30 — FastAPI Advanced | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 30 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 30</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>FastAPI Advanced</h1>
+  <p>Dependency injection, middleware, background tasks, custom error handlers, and routers for splitting large APIs. These are the production patterns you'll use in every real FastAPI service.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>Dependency injection with <code>Depends()</code> — shared logic without repetition</li>
+        <li>Middleware — request/response interception for logging, timing, CORS</li>
+        <li>Background tasks — fire-and-forget after responding</li>
+        <li>Custom exception handlers — consistent error response shapes</li>
+        <li>Routers — splitting large apps into domain modules</li>
+        <li>CORS middleware for frontend integration</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>Depends(get_db)</code> → <code>@Autowired</code> field injection / <code>@Bean</code> scoped components</li>
+        <li>Middleware → Spring <code>HandlerInterceptor</code> / <code>OncePerRequestFilter</code></li>
+        <li><code>BackgroundTasks</code> → <code>@Async</code> method called after response sent</li>
+        <li><code>@app.exception_handler</code> → <code>@ControllerAdvice</code> + <code>@ExceptionHandler</code></li>
+        <li><code>APIRouter</code> → Spring <code>@Controller</code> per domain, then <code>@Import</code></li>
+        <li>CORS middleware → Spring Security CORS config / <code>@CrossOrigin</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Dependency Injection with Depends()</h2>
+
+    <p>FastAPI's <code>Depends()</code> is constructor injection for route handlers. Declare a dependency function, and FastAPI calls it automatically — injecting its return value into your route. Dependencies can depend on other dependencies, forming a tree.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — Spring</span>
+        <pre><code class="language-java">@RestController
+public class ItemController {
+    @Autowired
+    private ItemRepository repo;    // injected by Spring
+
+    @GetMapping("/items")
+    public List&lt;Item&gt; list() {
+        return repo.findAll();
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — FastAPI</span>
+        <pre><code class="language-python">from fastapi import FastAPI, Depends
+from typing import Annotated
+
+app = FastAPI()
+
+# Dependency function — can be anything callable
+def get_db():
+    db = connect_to_db()   # fake connection
+    try:
+        yield db           # yield = cleanup after request
+    finally:
+        db.close()
+
+# Type alias for cleaner signatures
+DB = Annotated[Database, Depends(get_db)]
+
+@app.get("/items")
+def list_items(db: DB):
+    return db.query("SELECT * FROM items")
+
+@app.post("/items")
+def create_item(body: ItemCreate, db: DB):
+    return db.insert(body.model_dump())</code></pre>
+      </div>
+    </div>
+
+    <h3>Auth dependency — reusable across routes</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from fastapi import Depends, Header, HTTPException
+from typing import Annotated
+
+# Shared auth dependency
+def verify_token(x_api_key: str = Header()) -> str:
+    """Extract and validate API key from header."""
+    if x_api_key != "secret-key":
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return x_api_key
+
+# Type alias — use Annotated for clean signatures
+AuthToken = Annotated[str, Depends(verify_token)]
+
+@app.get("/protected")
+def protected_route(token: AuthToken):
+    return {"message": "Access granted", "token": token}
+
+# Apply to all routes in a router
+from fastapi import APIRouter
+router = APIRouter(dependencies=[Depends(verify_token)])
+
+@router.get("/admin/users")
+def list_users():
+    return []   # token already verified by the router-level dependency</code></pre>
+    </div>
+
+    <h3>Dependency with state</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from fastapi import Depends
+from functools import lru_cache
+
+class Settings:
+    db_url: str = "sqlite:///./test.db"
+    debug: bool = False
+
+@lru_cache   # called once per process — acts like a singleton
+def get_settings() -> Settings:
+    return Settings()
+
+SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+@app.get("/config")
+def show_config(settings: SettingsDep):
+    return {"db_url": settings.db_url, "debug": settings.debug}</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Middleware</h2>
+
+    <p>Middleware intercepts every request before it reaches a route and every response before it leaves. Use it for logging, timing, authentication, compression, or custom headers.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import time
+import uuid
+from fastapi import FastAPI, Request, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+
+app = FastAPI()
+
+# Middleware as a class (more control)
+class TimingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        start = time.perf_counter()
+        response: Response = await call_next(request)   # call the actual route
+        elapsed = time.perf_counter() - start
+        response.headers["X-Process-Time"] = f"{elapsed:.4f}s"
+        return response
+
+class RequestIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        request_id = str(uuid.uuid4())
+        # Attach to request state for use in route handlers
+        request.state.request_id = request_id
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+app.add_middleware(TimingMiddleware)
+app.add_middleware(RequestIdMiddleware)
+
+# Middleware as a decorator — simpler for one-off cases
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"→ {request.method} {request.url.path}")
+    response = await call_next(request)
+    print(f"← {response.status_code}")
+    return response</code></pre>
+    </div>
+
+    <h3>CORS — for frontend integration</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "https://myapp.com"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+# During development: allow_origins=["*"] to allow all origins</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Background Tasks</h2>
+
+    <p>Background tasks run <em>after</em> the response is sent to the client. Use them for operations that shouldn't make the client wait: sending email, writing audit logs, triggering async jobs.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — @Async</span>
+        <pre><code class="language-java">@Service
+public class NotificationService {
+    @Async
+    public CompletableFuture&lt;Void&gt; sendEmail(String to, String msg) {
+        // runs in background thread after response sent
+        emailClient.send(to, msg);
+        return CompletableFuture.completedFuture(null);
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from fastapi import FastAPI, BackgroundTasks
+import smtplib
+
+app = FastAPI()
+
+def send_welcome_email(email: str, name: str) -> None:
+    """Runs after the response is sent — doesn't block the client."""
+    print(f"Sending welcome email to {email}...")
+    # smtplib.sendmail(...) in reality
+    import time; time.sleep(2)   # simulate slow email
+    print(f"Email sent to {email}")
+
+@app.post("/users", status_code=201)
+def create_user(body: UserCreate, background_tasks: BackgroundTasks):
+    user = save_user(body)
+    # Queue the email — will run AFTER this function returns
+    background_tasks.add_task(send_welcome_email, body.email, body.name)
+    return user   # client gets response immediately</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Custom Exception Handlers</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
+# Custom exception class
+class ItemNotFoundError(Exception):
+    def __init__(self, item_id: int):
+        self.item_id = item_id
+
+# Register a handler — like @ControllerAdvice in Spring
+@app.exception_handler(ItemNotFoundError)
+async def item_not_found_handler(request: Request, exc: ItemNotFoundError):
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "NOT_FOUND",
+            "message": f"Item {exc.item_id} does not exist",
+            "path": str(request.url.path),
+        },
+    )
+
+# Override the default 422 validation error response
+from fastapi.exceptions import RequestValidationError
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={
+            "error": "VALIDATION_ERROR",
+            "fields": exc.errors(),
+        },
+    )
+
+@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    if item_id not in db:
+        raise ItemNotFoundError(item_id)   # custom exception
+    return db[item_id]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Routers — Splitting Large Apps</h2>
+
+    <p>As an app grows, putting everything in <code>main.py</code> becomes unmanageable. <code>APIRouter</code> lets you group routes by domain — like Spring's <code>@Controller</code> per package.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — routers/users.py</span>
+      <pre><code class="language-python">from fastapi import APIRouter, Depends, HTTPException
+
+router = APIRouter(
+    prefix="/users",            # all routes here start with /users
+    tags=["users"],             # groups in /docs Swagger UI
+    dependencies=[Depends(verify_token)],  # applied to all routes in this router
+)
+
+@router.get("/")
+def list_users(): ...
+
+@router.get("/{user_id}")
+def get_user(user_id: int): ...
+
+@router.post("/", status_code=201)
+def create_user(body: UserCreate): ...</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — routers/items.py</span>
+      <pre><code class="language-python">from fastapi import APIRouter
+
+router = APIRouter(prefix="/items", tags=["items"])
+
+@router.get("/")
+def list_items(): ...
+
+@router.post("/", status_code=201)
+def create_item(body: ItemCreate): ...</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — main.py</span>
+      <pre><code class="language-python">from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from routers import users, items
+
+app = FastAPI(title="My API", version="2.0")
+
+# CORS
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+# Mount routers
+app.include_router(users.router)
+app.include_router(items.router)
+
+# Health check — lives in main
+@app.get("/health", tags=["system"])
+def health(): return {"status": "ok"}</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Dependency</div>
+        <code>def get_db(): yield db; db.close()</code>
+        <p>Yield-based dependencies auto-clean up after the request. Used for DB connections.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Inject dependency</div>
+        <code>DB = Annotated[Database, Depends(get_db)]</code>
+        <p>Type alias + Annotated keeps signatures clean. FastAPI resolves automatically.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Middleware class</div>
+        <code>class M(BaseHTTPMiddleware): async def dispatch(self, req, call_next): ...</code>
+        <p>Intercepts every request/response. Call <code>await call_next(request)</code> to proceed.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">CORS</div>
+        <code>app.add_middleware(CORSMiddleware, allow_origins=[...])</code>
+        <p>Required for browser-based frontends hitting a different origin/port.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Background task</div>
+        <code>background_tasks.add_task(fn, arg1, arg2)</code>
+        <p>Runs after response is sent. Fast client, slow work. Parameter: <code>BackgroundTasks</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Exception handler</div>
+        <code>@app.exception_handler(MyError) / async def handler(req, exc): return JSONResponse(...)</code>
+        <p>Like Spring's <code>@ControllerAdvice</code>. Centralises error response format.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Router</div>
+        <code>router = APIRouter(prefix="/users", tags=["users"])</code>
+        <p>Group routes by domain. Mount with <code>app.include_router(router)</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Router-level auth</div>
+        <code>APIRouter(dependencies=[Depends(verify_token)])</code>
+        <p>Applies a dependency to all routes in the router — no need to repeat on each.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>Depends()</code> is FastAPI's dependency injection — declare a function, and FastAPI calls it and injects the result. Use <code>yield</code>-based dependencies for resources that need cleanup (DB connections, file handles). Dependencies compose: a dependency can depend on other dependencies.</li>
+      <li>Middleware runs on every request/response — use it sparingly and keep it fast. Add timing, request IDs, and logging there. Business logic belongs in route handlers or services, not middleware.</li>
+      <li><code>BackgroundTasks</code> is the simple, no-install solution for fire-and-forget work (emails, webhooks, audit logs). For heavier workloads that need retries, scheduling, or distributed execution, use Celery (Day 40).</li>
+      <li>Custom exception handlers centralise your error response format. Raise domain-specific exceptions in your route handlers and let the handlers format the response — same pattern as Spring's <code>@ControllerAdvice</code>.</li>
+      <li><code>APIRouter</code> is how you scale a FastAPI app. One router per domain, each with its own prefix, tags, and shared dependencies. Your <code>main.py</code> becomes a thin wiring file — just <code>include_router</code> calls and app-level config.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 31</h4>
+      <ul>
+        <li>Refactor the Day 29 Task API into two files: <code>routers/tasks.py</code> with the task routes and <code>main.py</code> that mounts it</li>
+        <li>Add a <code>TimingMiddleware</code> that adds an <code>X-Process-Time</code> header to every response</li>
+        <li>Add a background task that logs every created task to a file (append mode) after the response is sent</li>
+        <li>Create a custom <code>TaskNotFoundError</code> exception and a handler that returns consistent JSON with <code>"error"</code>, <code>"message"</code>, and <code>"task_id"</code> fields</li>
+        <li>Add an <code>api_key</code> dependency that reads from the <code>X-API-Key</code> header and apply it router-wide</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 31: SQLAlchemy</strong><br>
+      FastAPI's data layer. SQLAlchemy is Python's JPA/Hibernate — define models, run queries, manage relations. You'll also meet Alembic for migrations (like Flyway/Liquibase) and see how to wire it all into a FastAPI dependency.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day29.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day31.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 30;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

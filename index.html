@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Python for Java Developers — 56-Day Guide</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #e0e0e0;
+      font-family: 'Syne', sans-serif;
+      min-height: 100vh;
+    }
+
+    header {
+      padding: 48px 24px 32px;
+      text-align: center;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    header h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 800;
+      color: #f0e040;
+      letter-spacing: -0.02em;
+    }
+
+    header p {
+      margin-top: 10px;
+      color: #888;
+      font-size: 1.1rem;
+    }
+
+    header .stats {
+      margin-top: 20px;
+      display: flex;
+      gap: 32px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    header .stat {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #40e0b0;
+    }
+
+    header .stat span {
+      color: #f0e040;
+      font-weight: 600;
+    }
+
+    /* Week selector */
+    .week-bar {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding: 24px 24px 0;
+    }
+
+    .week-btn {
+      background: #1a1a1a;
+      border: 1px solid #2a2a2a;
+      color: #888;
+      padding: 7px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: 'Syne', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+
+    .week-btn:hover {
+      border-color: #f0e040;
+      color: #f0e040;
+    }
+
+    .week-btn.active {
+      background: #f0e040;
+      border-color: #f0e040;
+      color: #0d0d0d;
+    }
+
+    .week-btn.complete {
+      border: 2px solid #40e0b0;
+      color: #40e0b0;
+    }
+
+    .week-btn.complete.active {
+      background: #f0e040;
+      border-color: #f0e040;
+      color: #0d0d0d;
+    }
+
+    /* Phase labels */
+    .phase-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #555;
+      padding: 32px 24px 12px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      padding: 0 24px 48px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* Cards */
+    .card {
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 10px;
+      padding: 20px;
+      cursor: pointer;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      transition: border-color 0.15s ease, transform 0.15s ease;
+      position: relative;
+    }
+
+    .card:hover {
+      border-color: #f0e040;
+      transform: translateY(-2px);
+    }
+
+    .card.done {
+      border-color: #40e0b0;
+      opacity: 0.75;
+    }
+
+    .card.done::after {
+      content: '✓';
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      color: #40e0b0;
+      font-size: 1rem;
+      font-weight: 700;
+    }
+
+    .card-day {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #555;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: #e0e0e0;
+      line-height: 1.3;
+    }
+
+    .card-tags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .tag {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.68rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .tag-core { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+    .tag-lib  { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+    .tag-project { background: #2a1a10; color: #ff6b35; border: 1px solid #3d2218; }
+
+    .tag-phase {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 500;
+      background: #1a1a1a;
+      color: #555;
+      border: 1px solid #2a2a2a;
+    }
+
+    .card-desc {
+      font-size: 0.82rem;
+      color: #666;
+      line-height: 1.4;
+    }
+
+    .card-locked {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    footer {
+      text-align: center;
+      padding: 32px;
+      border-top: 1px solid #2a2a2a;
+      font-size: 0.8rem;
+      color: #444;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Python for Java Developers</h1>
+  <p>A 56-day hands-on guide — one hour per day, idiomatic Python from a Java mindset</p>
+  <div class="stats">
+    <div class="stat">Duration: <span>56 days</span></div>
+    <div class="stat">Phases: <span>4</span></div>
+    <div class="stat">Projects: <span>8</span></div>
+    <div class="stat">Completed: <span id="done-count">0</span> / 56</div>
+  </div>
+</header>
+
+<div class="week-bar">
+  <button class="week-btn active" data-week="all">All</button>
+  <button class="week-btn" data-week="1">Week 1</button>
+  <button class="week-btn" data-week="2">Week 2</button>
+  <button class="week-btn" data-week="3">Week 3</button>
+  <button class="week-btn" data-week="4">Week 4</button>
+  <button class="week-btn" data-week="5">Week 5</button>
+  <button class="week-btn" data-week="6">Week 6</button>
+  <button class="week-btn" data-week="7">Week 7</button>
+  <button class="week-btn" data-week="8">Week 8</button>
+</div>
+
+<!-- Phase 1 -->
+<div class="phase-label" data-phase="1">Phase 1 — Foundation (Week 1–2)</div>
+<div class="grid" id="grid-phase1">
+
+  <a class="card" href="day1.html" data-day="1" data-week="1">
+    <div class="card-day">Day 01</div>
+    <div class="card-title">Setup + Basics</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day2.html" data-day="2" data-week="1">
+    <div class="card-day">Day 02</div>
+    <div class="card-title">Control Flow + Comprehensions</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day3.html" data-day="3" data-week="1">
+    <div class="card-day">Day 03</div>
+    <div class="card-title">Functions</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day4.html" data-day="4" data-week="1">
+    <div class="card-day">Day 04</div>
+    <div class="card-title">Data Structures</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day5.html" data-day="5" data-week="1">
+    <div class="card-day">Day 05</div>
+    <div class="card-title">Strings + File I/O</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day6.html" data-day="6" data-week="1">
+    <div class="card-day">Day 06</div>
+    <div class="card-title">Error Handling + Modules</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day7.html" data-day="7" data-week="1">
+    <div class="card-day">Day 07</div>
+    <div class="card-title">Mini Project: CLI Task Manager</div>
+    <div class="card-tags">
+      <span class="tag tag-project">project</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+    <div class="card-desc">Build a menu-driven task manager with JSON persistence</div>
+  </a>
+
+  <a class="card" href="day8.html" data-day="8" data-week="2">
+    <div class="card-day">Day 08</div>
+    <div class="card-title">OOP: Classes + Inheritance</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day9.html" data-day="9" data-week="2">
+    <div class="card-day">Day 09</div>
+    <div class="card-title">Dunder Methods + Properties</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day10.html" data-day="10" data-week="2">
+    <div class="card-day">Day 10</div>
+    <div class="card-title">Iterators + Generators</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day11.html" data-day="11" data-week="2">
+    <div class="card-day">Day 11</div>
+    <div class="card-title">Decorators Deep Dive</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day12.html" data-day="12" data-week="2">
+    <div class="card-day">Day 12</div>
+    <div class="card-title">Context Managers</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day13.html" data-day="13" data-week="2">
+    <div class="card-day">Day 13</div>
+    <div class="card-title">Type Hints + Dataclasses</div>
+    <div class="card-tags">
+      <span class="tag tag-core">core</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+  </a>
+
+  <a class="card" href="day14.html" data-day="14" data-week="2">
+    <div class="card-day">Day 14</div>
+    <div class="card-title">Mini Project: Refactor CLI with OOP</div>
+    <div class="card-tags">
+      <span class="tag tag-project">project</span>
+      <span class="tag tag-phase">Foundation</span>
+    </div>
+    <div class="card-desc">Rewrite Day 7 using dataclasses, decorators, and type hints</div>
+  </a>
+
+</div>
+
+<!-- Phase 2 -->
+<div class="phase-label" data-phase="2">Phase 2 — Core Libraries (Week 3–4)</div>
+<div class="grid" id="grid-phase2">
+
+  <a class="card" href="day15.html" data-day="15" data-week="3">
+    <div class="card-day">Day 15</div>
+    <div class="card-title">collections module</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day16.html" data-day="16" data-week="3">
+    <div class="card-day">Day 16</div>
+    <div class="card-title">itertools + functools</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day17.html" data-day="17" data-week="3">
+    <div class="card-day">Day 17</div>
+    <div class="card-title">pathlib + os + sys</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day18.html" data-day="18" data-week="3">
+    <div class="card-day">Day 18</div>
+    <div class="card-title">datetime + json</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day19.html" data-day="19" data-week="3">
+    <div class="card-day">Day 19</div>
+    <div class="card-title">requests + httpx</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day20.html" data-day="20" data-week="3">
+    <div class="card-day">Day 20</div>
+    <div class="card-title">Concurrency: threading + multiprocessing</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day21.html" data-day="21" data-week="3">
+    <div class="card-day">Day 21</div>
+    <div class="card-title">Project: REST API Client</div>
+    <div class="card-tags"><span class="tag tag-project">project</span><span class="tag tag-phase">Core Libraries</span></div>
+    <div class="card-desc">GitHub API CLI — fetch repos, issues, save JSON report</div>
+  </a>
+
+  <a class="card" href="day22.html" data-day="22" data-week="4">
+    <div class="card-day">Day 22</div>
+    <div class="card-title">asyncio Basics</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day23.html" data-day="23" data-week="4">
+    <div class="card-day">Day 23</div>
+    <div class="card-title">asyncio Advanced</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day24.html" data-day="24" data-week="4">
+    <div class="card-day">Day 24</div>
+    <div class="card-title">NumPy Basics</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day25.html" data-day="25" data-week="4">
+    <div class="card-day">Day 25</div>
+    <div class="card-title">Pandas Basics</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day26.html" data-day="26" data-week="4">
+    <div class="card-day">Day 26</div>
+    <div class="card-title">Pandas Advanced</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day27.html" data-day="27" data-week="4">
+    <div class="card-day">Day 27</div>
+    <div class="card-title">pytest</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Core Libraries</span></div>
+  </a>
+
+  <a class="card" href="day28.html" data-day="28" data-week="4">
+    <div class="card-day">Day 28</div>
+    <div class="card-title">Project: Data Pipeline</div>
+    <div class="card-tags"><span class="tag tag-project">project</span><span class="tag tag-phase">Core Libraries</span></div>
+    <div class="card-desc">Clean and analyze a sales CSV, output report + clean data</div>
+  </a>
+
+</div>
+
+<!-- Phase 3 -->
+<div class="phase-label" data-phase="3">Phase 3 — Backend + AI (Week 5–6)</div>
+<div class="grid" id="grid-phase3">
+
+  <a class="card" href="day29.html" data-day="29" data-week="5">
+    <div class="card-day">Day 29</div>
+    <div class="card-title">FastAPI Basics</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day30.html" data-day="30" data-week="5">
+    <div class="card-day">Day 30</div>
+    <div class="card-title">FastAPI Advanced</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day31.html" data-day="31" data-week="5">
+    <div class="card-day">Day 31</div>
+    <div class="card-title">SQLAlchemy</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day32.html" data-day="32" data-week="5">
+    <div class="card-day">Day 32</div>
+    <div class="card-title">Pydantic</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day33.html" data-day="33" data-week="5">
+    <div class="card-day">Day 33</div>
+    <div class="card-title">Docker + Python</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day34.html" data-day="34" data-week="5">
+    <div class="card-day">Day 34</div>
+    <div class="card-title">Environment + Config Patterns</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day35.html" data-day="35" data-week="5">
+    <div class="card-day">Day 35</div>
+    <div class="card-title">Project: FastAPI + SQLAlchemy API</div>
+    <div class="card-tags"><span class="tag tag-project">project</span><span class="tag tag-phase">Backend+AI</span></div>
+    <div class="card-desc">Full REST API for task manager with SQLite persistence</div>
+  </a>
+
+  <a class="card" href="day36.html" data-day="36" data-week="6">
+    <div class="card-day">Day 36</div>
+    <div class="card-title">LangChain Basics</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day37.html" data-day="37" data-week="6">
+    <div class="card-day">Day 37</div>
+    <div class="card-title">LangChain: Agents + Tools</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day38.html" data-day="38" data-week="6">
+    <div class="card-day">Day 38</div>
+    <div class="card-title">ChromaDB + Vector Stores</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day39.html" data-day="39" data-week="6">
+    <div class="card-day">Day 39</div>
+    <div class="card-title">OpenAI SDK + Streaming</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day40.html" data-day="40" data-week="6">
+    <div class="card-day">Day 40</div>
+    <div class="card-title">Celery + Redis</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day41.html" data-day="41" data-week="6">
+    <div class="card-day">Day 41</div>
+    <div class="card-title">Logging + Observability</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Backend+AI</span></div>
+  </a>
+
+  <a class="card" href="day42.html" data-day="42" data-week="6">
+    <div class="card-day">Day 42</div>
+    <div class="card-title">Project: Mini RAG Chatbot</div>
+    <div class="card-tags"><span class="tag tag-project">project</span><span class="tag tag-phase">Backend+AI</span></div>
+    <div class="card-desc">Document Q&amp;A service with FastAPI, ChromaDB, and OpenAI</div>
+  </a>
+
+</div>
+
+<!-- Phase 4 -->
+<div class="phase-label" data-phase="4">Phase 4 — Advanced (Week 7–8)</div>
+<div class="grid" id="grid-phase4">
+
+  <a class="card" href="day43.html" data-day="43" data-week="7">
+    <div class="card-day">Day 43</div>
+    <div class="card-title">Advanced OOP: ABCs + Protocols</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day44.html" data-day="44" data-week="7">
+    <div class="card-day">Day 44</div>
+    <div class="card-title">Metaclasses + __slots__</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day45.html" data-day="45" data-week="7">
+    <div class="card-day">Day 45</div>
+    <div class="card-title">Python Internals</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day46.html" data-day="46" data-week="7">
+    <div class="card-day">Day 46</div>
+    <div class="card-title">Performance + Profiling</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day47.html" data-day="47" data-week="7">
+    <div class="card-day">Day 47</div>
+    <div class="card-title">Packaging + CLI Tools</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day48.html" data-day="48" data-week="7">
+    <div class="card-day">Day 48</div>
+    <div class="card-title">Design Patterns in Python</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day49.html" data-day="49" data-week="7">
+    <div class="card-day">Day 49</div>
+    <div class="card-title">Project: Package a Library</div>
+    <div class="card-tags"><span class="tag tag-project">project</span><span class="tag tag-phase">Advanced</span></div>
+    <div class="card-desc">Package Task Manager as an installable CLI library</div>
+  </a>
+
+  <a class="card" href="day50.html" data-day="50" data-week="8">
+    <div class="card-day">Day 50</div>
+    <div class="card-title">Advanced Testing</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day51.html" data-day="51" data-week="8">
+    <div class="card-day">Day 51</div>
+    <div class="card-title">CI/CD for Python</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day52.html" data-day="52" data-week="8">
+    <div class="card-day">Day 52</div>
+    <div class="card-title">Scripting + Automation</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day53.html" data-day="53" data-week="8">
+    <div class="card-day">Day 53</div>
+    <div class="card-title">Web Scraping</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day54.html" data-day="54" data-week="8">
+    <div class="card-day">Day 54</div>
+    <div class="card-title">Intro to ML Stack</div>
+    <div class="card-tags"><span class="tag tag-lib">lib</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day55.html" data-day="55" data-week="8">
+    <div class="card-day">Day 55</div>
+    <div class="card-title">Review + Weak Spots</div>
+    <div class="card-tags"><span class="tag tag-core">core</span><span class="tag tag-phase">Advanced</span></div>
+  </a>
+
+  <a class="card" href="day56.html" data-day="56" data-week="8">
+    <div class="card-day">Day 56</div>
+    <div class="card-title">Capstone Project</div>
+    <div class="card-tags"><span class="tag tag-project">project</span><span class="tag tag-phase">Advanced</span></div>
+    <div class="card-desc">Real Estate Automation or AI Dev Tool — your choice</div>
+  </a>
+
+</div>
+
+<footer>56 days · Python for Java Developers · Built with Claude Code</footer>
+
+<script>
+  // Week filter
+  const weekBtns = document.querySelectorAll('.week-btn');
+  const cards = document.querySelectorAll('.card');
+  const phaseLabels = document.querySelectorAll('.phase-label');
+  const grids = document.querySelectorAll('.grid');
+
+  weekBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      weekBtns.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const week = btn.dataset.week;
+
+      cards.forEach(card => {
+        if (week === 'all' || card.dataset.week === week) {
+          card.style.display = '';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+
+      // Show/hide phase labels and grids
+      if (week === 'all') {
+        phaseLabels.forEach(l => l.style.display = '');
+        grids.forEach(g => g.style.display = '');
+      } else {
+        const weekNum = parseInt(week);
+        const phase = weekNum <= 2 ? 1 : weekNum <= 4 ? 2 : weekNum <= 6 ? 3 : 4;
+        phaseLabels.forEach(l => {
+          l.style.display = parseInt(l.dataset.phase) === phase ? '' : 'none';
+        });
+        grids.forEach(g => {
+          const hasVisible = Array.from(g.querySelectorAll('.card')).some(c => c.style.display !== 'none');
+          g.style.display = hasVisible ? '' : 'none';
+        });
+      }
+    });
+  });
+
+  // Done state from localStorage
+  function loadDoneState() {
+    let count = 0;
+    cards.forEach(card => {
+      const day = card.dataset.day;
+      if (localStorage.getItem(`day-${day}-done`) === 'true') {
+        card.classList.add('done');
+        count++;
+      }
+    });
+    document.getElementById('done-count').textContent = count;
+  }
+
+  loadDoneState();
+
+  // Week completion state
+  function updateWeekCompletion() {
+    document.querySelectorAll('.week-btn[data-week]').forEach(btn => {
+      const week = btn.dataset.week;
+      if (week === 'all') return;
+
+      const weekCards = [...cards].filter(c => c.dataset.week === week);
+      if (weekCards.length === 0) return;
+
+      const allDone = weekCards.every(c =>
+        localStorage.getItem(`day-${c.dataset.day}-done`) === 'true'
+      );
+
+      if (allDone) {
+        btn.classList.add('complete');
+        if (!btn.textContent.includes('✓')) {
+          btn.textContent = btn.textContent.trim() + ' ✓';
+        }
+      } else {
+        btn.classList.remove('complete');
+        btn.textContent = btn.textContent.replace(' ✓', '').trim();
+      }
+    });
+  }
+
+  updateWeekCompletion();
+</script>
+</body>
+</html>

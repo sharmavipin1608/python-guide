@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 23 — asyncio Advanced | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 23 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 23</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>asyncio Advanced</h1>
+  <p>Queues, timeouts, running blocking code safely, and building a real async scraper. The patterns here are what you'll actually use in FastAPI services and high-throughput data pipelines.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><code>asyncio.Queue</code> — async producer/consumer pattern</li>
+        <li><code>asyncio.Semaphore</code> — limit concurrent operations</li>
+        <li><code>asyncio.timeout</code> and <code>asyncio.wait_for</code> — per-operation timeouts</li>
+        <li><code>loop.run_in_executor</code> — running blocking code without blocking the loop</li>
+        <li>Error handling in async: tasks, cancellation, <code>CancelledError</code></li>
+        <li>Building a small async web scraper with <code>httpx</code></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>asyncio.Queue</code> → <code>LinkedBlockingQueue</code> (but non-blocking, async)</li>
+        <li><code>asyncio.Semaphore</code> → <code>Semaphore</code> from <code>java.util.concurrent</code></li>
+        <li><code>asyncio.timeout</code> → <code>CompletableFuture.orTimeout(n, SECONDS)</code></li>
+        <li><code>run_in_executor</code> → <code>CompletableFuture.supplyAsync(blocking, pool)</code></li>
+        <li><code>task.cancel()</code> → <code>future.cancel(true)</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>asyncio.Queue — Producer/Consumer</h2>
+
+    <p>An <code>asyncio.Queue</code> is thread-safe within an async context and integrates with the event loop — producers <code>await queue.put()</code> and consumers <code>await queue.get()</code>. When the queue is full, producers suspend. When empty, consumers suspend.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">BlockingQueue&lt;String&gt; q = new LinkedBlockingQueue&lt;&gt;(10);
+
+// Producer thread
+q.put("item");
+
+// Consumer thread
+String item = q.take();</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import asyncio
+
+async def producer(queue: asyncio.Queue, items: list) -> None:
+    for item in items:
+        await queue.put(item)
+        print(f"Produced: {item}")
+        await asyncio.sleep(0.1)
+    await queue.put(None)   # sentinel to signal done
+
+async def consumer(queue: asyncio.Queue, name: str) -> None:
+    while True:
+        item = await queue.get()
+        if item is None:
+            queue.task_done()
+            break
+        print(f"[{name}] consumed: {item}")
+        await asyncio.sleep(0.2)   # simulate processing
+        queue.task_done()
+
+async def main():
+    queue: asyncio.Queue[str | None] = asyncio.Queue(maxsize=5)
+    items = [f"task-{i}" for i in range(10)]
+
+    # Start producer and multiple consumers
+    await asyncio.gather(
+        producer(queue, items),
+        consumer(queue, "worker-1"),
+        consumer(queue, "worker-2"),
+    )
+    print("All done!")
+
+asyncio.run(main())</code></pre>
+      </div>
+    </div>
+
+    <h3>Multiple consumers, one queue</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+import httpx
+
+async def scrape_worker(
+    name: str,
+    queue: asyncio.Queue,
+    client: httpx.AsyncClient,
+    results: list,
+) -> None:
+    while True:
+        url = await queue.get()
+        if url is None:
+            queue.task_done()
+            break
+        try:
+            resp = await client.get(url, timeout=5.0)
+            results.append({"url": url, "status": resp.status_code,
+                            "size": len(resp.content)})
+            print(f"[{name}] {url} → {resp.status_code}")
+        except Exception as e:
+            results.append({"url": url, "error": str(e)})
+        finally:
+            queue.task_done()
+
+async def main():
+    urls = [f"https://httpbin.org/get?n={i}" for i in range(20)]
+    n_workers = 5
+    queue: asyncio.Queue = asyncio.Queue()
+    results = []
+
+    for url in urls:
+        await queue.put(url)
+    for _ in range(n_workers):
+        await queue.put(None)   # one sentinel per worker
+
+    async with httpx.AsyncClient() as client:
+        workers = [
+            asyncio.create_task(scrape_worker(f"w{i}", queue, client, results))
+            for i in range(n_workers)
+        ]
+        await asyncio.gather(*workers)
+
+    print(f"Scraped {len(results)} URLs")
+
+asyncio.run(main())</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>asyncio.Semaphore — Rate Limiting</h2>
+
+    <p>A <code>Semaphore</code> limits how many coroutines can execute a section simultaneously. Use it to cap concurrent HTTP connections without restructuring your code into a queue.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+import httpx
+
+async def fetch_with_limit(
+    sem: asyncio.Semaphore,
+    client: httpx.AsyncClient,
+    url: str,
+) -> dict:
+    async with sem:   # blocks if semaphore count is 0
+        resp = await client.get(url, timeout=10.0)
+        return {"url": url, "status": resp.status_code}
+
+async def main():
+    urls = [f"https://httpbin.org/get?n={i}" for i in range(50)]
+
+    sem = asyncio.Semaphore(10)   # max 10 concurrent requests
+
+    async with httpx.AsyncClient() as client:
+        results = await asyncio.gather(
+            *[fetch_with_limit(sem, client, url) for url in urls],
+            return_exceptions=True,
+        )
+
+    ok = [r for r in results if isinstance(r, dict)]
+    print(f"Completed: {len(ok)}/{len(urls)}")
+
+asyncio.run(main())</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Timeouts</h2>
+
+    <h3>asyncio.timeout (Python 3.11+)</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+
+async def slow_operation() -> str:
+    await asyncio.sleep(5)
+    return "done"
+
+async def main():
+    # asyncio.timeout — Python 3.11+
+    try:
+        async with asyncio.timeout(2.0):   # 2-second deadline
+            result = await slow_operation()
+    except TimeoutError:
+        print("Operation timed out!")
+
+    # asyncio.wait_for — works in Python 3.8+
+    try:
+        result = await asyncio.wait_for(slow_operation(), timeout=2.0)
+    except asyncio.TimeoutError:
+        print("wait_for timed out!")
+
+asyncio.run(main())</code></pre>
+    </div>
+
+    <h3>Per-task timeout pattern</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+import httpx
+
+async def fetch_with_timeout(
+    client: httpx.AsyncClient,
+    url: str,
+    timeout: float = 3.0,
+) -> dict | None:
+    try:
+        async with asyncio.timeout(timeout):
+            resp = await client.get(url)
+            return {"url": url, "status": resp.status_code}
+    except (TimeoutError, httpx.RequestError) as e:
+        print(f"Failed {url}: {type(e).__name__}")
+        return None
+
+async def main():
+    urls = [
+        "https://httpbin.org/delay/1",   # fast
+        "https://httpbin.org/delay/5",   # will time out
+        "https://httpbin.org/delay/2",   # borderline
+    ]
+    async with httpx.AsyncClient() as client:
+        results = await asyncio.gather(
+            *[fetch_with_timeout(client, url) for url in urls]
+        )
+    successful = [r for r in results if r is not None]
+    print(f"{len(successful)}/{len(urls)} succeeded")
+
+asyncio.run(main())</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>run_in_executor — Blocking Code in Async</h2>
+
+    <p>Sometimes you must call a blocking library (a sync database driver, a legacy SDK) from async code. <code>loop.run_in_executor()</code> runs it in a thread pool without blocking the event loop.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import asyncio
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+def blocking_db_query(query: str) -> list[dict]:
+    """Simulates a synchronous DB call that takes time."""
+    time.sleep(1)   # blocks — we can't make this async
+    return [{"id": 1, "data": query}]
+
+async def async_db_query(query: str) -> list[dict]:
+    """Wraps the blocking call so the event loop isn't blocked."""
+    loop = asyncio.get_running_loop()
+    # Run in a thread pool — event loop stays free
+    result = await loop.run_in_executor(None, blocking_db_query, query)
+    return result
+
+async def main():
+    # All three "queries" run concurrently via thread pool
+    results = await asyncio.gather(
+        async_db_query("SELECT * FROM users"),
+        async_db_query("SELECT * FROM products"),
+        async_db_query("SELECT * FROM orders"),
+    )
+    print(f"Got {len(results)} result sets")
+
+asyncio.run(main())</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>When to use run_in_executor:</strong> Whenever you must call a synchronous blocking function from async code — legacy SDKs, <code>requests</code> (vs httpx), CPU-heavy computation, or any <code>time.sleep()</code>-style blocking call. The thread pool absorbs the blocking; your event loop stays responsive.
+    </div>
+  </section>
+
+  <section>
+    <h2>Practical: Async Web Scraper</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">"""
+Async web scraper: fetch multiple pages concurrently,
+extract titles, save results. Rate-limited with Semaphore.
+"""
+import asyncio
+import re
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+
+import httpx
+
+CONCURRENCY = 5   # max simultaneous requests
+
+@dataclass
+class ScrapeResult:
+    url: str
+    status: int = 0
+    title: str = ""
+    error: str = ""
+    fetched_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+def extract_title(html: str) -> str:
+    match = re.search(r"&lt;title&gt;(.+?)&lt;/title&gt;", html, re.IGNORECASE | re.DOTALL)
+    return match.group(1).strip() if match else "No title"
+
+async def scrape_one(
+    sem: asyncio.Semaphore,
+    client: httpx.AsyncClient,
+    url: str,
+) -> ScrapeResult:
+    async with sem:
+        try:
+            async with asyncio.timeout(10.0):
+                resp = await client.get(url, follow_redirects=True)
+                title = extract_title(resp.text)
+                return ScrapeResult(url=url, status=resp.status_code, title=title)
+        except TimeoutError:
+            return ScrapeResult(url=url, error="timeout")
+        except httpx.RequestError as e:
+            return ScrapeResult(url=url, error=str(e))
+
+async def scrape_all(urls: list[str]) -> list[ScrapeResult]:
+    sem = asyncio.Semaphore(CONCURRENCY)
+    async with httpx.AsyncClient(
+        headers={"User-Agent": "async-scraper/1.0"},
+        timeout=15.0,
+    ) as client:
+        return await asyncio.gather(
+            *[scrape_one(sem, client, url) for url in urls],
+            return_exceptions=False,
+        )
+
+async def main():
+    urls = [
+        "https://python.org",
+        "https://httpbin.org/html",
+        "https://example.com",
+    ]
+
+    results = await scrape_all(urls)
+
+    print(f"\nScraped {len(results)} pages:\n")
+    for r in results:
+        if r.error:
+            print(f"  ✗ {r.url[:50]:<50} ERROR: {r.error}")
+        else:
+            print(f"  ✓ [{r.status}] {r.url[:40]:<40} {r.title[:40]}")
+
+asyncio.run(main())</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Async Queue</div>
+        <code>q = asyncio.Queue(maxsize=N); await q.put(x); x = await q.get()</code>
+        <p>Suspends producer when full, consumer when empty. Call <code>q.task_done()</code> after processing.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Semaphore</div>
+        <code>sem = asyncio.Semaphore(10); async with sem: ...</code>
+        <p>Limit to N concurrent operations. Use as async context manager.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Timeout (3.11+)</div>
+        <code>async with asyncio.timeout(5.0): await op()</code>
+        <p>Raises <code>TimeoutError</code> if the block takes longer than the deadline.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">wait_for (3.8+)</div>
+        <code>await asyncio.wait_for(coro(), timeout=5.0)</code>
+        <p>Raises <code>asyncio.TimeoutError</code>. Works on any Python 3.8+ version.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Run blocking code</div>
+        <code>loop = asyncio.get_running_loop(); await loop.run_in_executor(None, fn, arg)</code>
+        <p><code>None</code> = default thread pool. Keeps the event loop responsive.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Cancel a task</div>
+        <code>task = asyncio.create_task(coro()); task.cancel()</code>
+        <p>Injects <code>CancelledError</code> at the next <code>await</code>. Catch it for cleanup.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Async context manager</div>
+        <code>async with httpx.AsyncClient() as c: ...</code>
+        <p>Calls <code>__aenter__</code>/<code>__aexit__</code>. Use for clients, DB sessions, locks.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Async iterator</div>
+        <code>async for item in async_gen(): ...</code>
+        <p>Like a regular iterator but each step can <code>await</code>. Used in async generators and streams.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li><code>asyncio.Queue</code> decouples producers and consumers without threads. Use it when you want to control backpressure — a bounded queue (with <code>maxsize</code>) automatically slows producers when consumers can't keep up.</li>
+      <li><code>asyncio.Semaphore</code> is the cleanest way to rate-limit concurrent operations when you're using <code>asyncio.gather()</code>. It's simpler than restructuring into a queue for cases where all tasks are known upfront.</li>
+      <li>Always add per-operation timeouts when making network calls in async code. Use <code>asyncio.timeout()</code> (Python 3.11+) or <code>asyncio.wait_for()</code> for compatibility — never rely solely on the HTTP library's timeout.</li>
+      <li><code>run_in_executor(None, fn, *args)</code> is the escape hatch for synchronous blocking code. The <code>None</code> uses the default thread pool. This is how you safely call legacy synchronous libraries from async code.</li>
+      <li>The scraper pattern (Semaphore + gather + httpx + timeout + dataclass result) is a complete, production-ready template. Adjust the concurrency limit based on target server policy and your connection pool size.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 24</h4>
+      <ul>
+        <li>Build a download queue: producer reads URLs from a file, 3 worker consumers fetch them concurrently, results are written to separate files</li>
+        <li>Add a retry mechanism to the scraper: if a request fails, put the URL back in the queue up to 3 times</li>
+        <li>Use <code>run_in_executor</code> to wrap a synchronous JSON parsing step that processes a large file (simulate with <code>time.sleep</code>)</li>
+        <li>Implement <code>asyncio.timeout</code> cancellation cleanup: catch <code>TimeoutError</code> and log which URL timed out before moving on</li>
+        <li>Add an async context manager to the scraper that prints a summary report when the scraping session ends</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 24: NumPy Basics</strong><br>
+      A completely different world: numerical computing. NumPy's <code>ndarray</code> does in one vectorized operation what a Python loop does in 100 lines. No direct Java equivalent — this is where Python's data science story begins.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day22.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day24.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 23;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

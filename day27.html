@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 27 — pytest | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 27 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 27</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>pytest</h1>
+  <p>Python's testing story is cleaner than Java's. No test class required — just a function named <code>test_</code> and a plain <code>assert</code>. Fixtures replace <code>@BeforeEach</code> setup, and <code>parametrize</code> replaces data providers.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>Writing test functions — no class, just <code>assert</code></li>
+        <li>pytest fixtures — dependency injection for tests</li>
+        <li><code>@pytest.mark.parametrize</code> — data-driven tests</li>
+        <li>Testing exceptions with <code>pytest.raises()</code></li>
+        <li>Mocking with <code>unittest.mock</code> and <code>pytest-mock</code></li>
+        <li>Running tests: filtering, verbose output, coverage</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li>Test function → JUnit 5 <code>@Test</code> method</li>
+        <li><code>assert x == y</code> → <code>assertEquals(y, x)</code></li>
+        <li>Fixture → <code>@BeforeEach</code> setup / <code>@AfterEach</code> teardown</li>
+        <li><code>@parametrize</code> → JUnit 5 <code>@ParameterizedTest</code> + <code>@MethodSource</code></li>
+        <li><code>pytest.raises()</code> → <code>assertThrows()</code></li>
+        <li><code>unittest.mock.MagicMock</code> → Mockito <code>mock()</code></li>
+        <li><code>monkeypatch</code> → no direct equivalent (closest: Mockito static mocking)</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Writing Tests</h2>
+
+    <h3>Test functions — no class needed</h3>
+    <p>A test is any function whose name starts with <code>test_</code>. Use plain Python <code>assert</code> — pytest rewrites assertions to show helpful failure messages without any special assertion methods.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — JUnit 5</span>
+        <pre><code class="language-java">class BankAccountTest {
+    @Test
+    void deposit_increases_balance() {
+        BankAccount acc = new BankAccount(100.0);
+        acc.deposit(50.0);
+        assertEquals(150.0, acc.getBalance());
+    }
+
+    @Test
+    void withdraw_below_zero_throws() {
+        BankAccount acc = new BankAccount(100.0);
+        assertThrows(IllegalStateException.class,
+            () -> acc.withdraw(200.0));
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — pytest</span>
+        <pre><code class="language-python"># test_bank_account.py
+import pytest
+from bank_account import BankAccount
+
+def test_deposit_increases_balance():
+    acc = BankAccount(100.0)
+    acc.deposit(50.0)
+    assert acc.balance == 150.0   # plain assert — pytest shows a diff on failure
+
+def test_withdraw_below_zero_raises():
+    acc = BankAccount(100.0)
+    with pytest.raises(ValueError) as exc_info:
+        acc.withdraw(200.0)
+    assert "insufficient" in str(exc_info.value).lower()
+
+def test_repr():
+    acc = BankAccount(100.0)
+    assert repr(acc) == "BankAccount(balance=100.0)"</code></pre>
+      </div>
+    </div>
+
+    <h3>Running tests</h3>
+    <div class="shell-block">
+      <span class="block-label">Shell</span>
+      <pre><code class="language-bash">pip install pytest
+
+pytest                          # run all tests in current dir
+pytest tests/                   # run tests in a directory
+pytest test_bank_account.py     # run a specific file
+pytest test_bank_account.py::test_deposit_increases_balance  # specific test
+pytest -v                       # verbose — show each test name
+pytest -k "deposit"             # run only tests whose name contains "deposit"
+pytest -x                       # stop at first failure
+pytest --tb=short               # shorter traceback format</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Fixtures</h2>
+
+    <p>Fixtures are how pytest does dependency injection. A fixture is a function decorated with <code>@pytest.fixture</code>. Any test that names a fixture as a parameter automatically receives its return value. pytest handles setup and teardown automatically.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — JUnit 5</span>
+        <pre><code class="language-java">class TaskManagerTest {
+    TaskManager manager;
+
+    @BeforeEach
+    void setUp() {
+        manager = new TaskManager(new InMemoryStorage());
+    }
+
+    @AfterEach
+    void tearDown() {
+        manager.clear();
+    }
+
+    @Test
+    void add_task_increases_count() {
+        manager.add("Buy milk");
+        assertEquals(1, manager.count());
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — pytest fixtures</span>
+        <pre><code class="language-python">import pytest
+from task_manager import TaskManager
+from storage import MemoryStorage
+
+@pytest.fixture
+def manager():
+    """Provides a fresh TaskManager for each test."""
+    return TaskManager(MemoryStorage())
+
+@pytest.fixture
+def manager_with_tasks(manager):
+    """Fixture can depend on other fixtures."""
+    manager.add("Buy milk")
+    manager.add("Walk dog")
+    return manager
+
+def test_add_increases_count(manager):
+    manager.add("Buy milk")
+    assert manager.count() == 1
+
+def test_complete_marks_done(manager_with_tasks):
+    tasks = manager_with_tasks.all()
+    manager_with_tasks.complete(tasks[0].id)
+    assert tasks[0].done is True</code></pre>
+      </div>
+    </div>
+
+    <h3>Fixtures with setup and teardown</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pytest
+import tempfile
+import os
+
+@pytest.fixture
+def temp_dir():
+    """Create a temp directory, yield it, clean up after."""
+    with tempfile.TemporaryDirectory() as d:
+        yield d   # test runs here
+    # TemporaryDirectory context manager cleans up after yield
+
+@pytest.fixture
+def db_connection():
+    """Open a DB connection, yield it, close after."""
+    conn = create_connection(":memory:")  # in-memory SQLite
+    conn.execute("CREATE TABLE tasks (id INTEGER, title TEXT)")
+    yield conn
+    conn.close()   # always runs, even if test fails
+
+def test_writes_file(temp_dir):
+    path = os.path.join(temp_dir, "output.txt")
+    write_report(path)
+    assert os.path.exists(path)</code></pre>
+    </div>
+
+    <h3>Fixture scope — control how often a fixture is created</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pytest
+
+@pytest.fixture(scope="function")  # default — new instance per test
+def fresh_data():
+    return {"count": 0}
+
+@pytest.fixture(scope="module")    # one instance for the whole test file
+def expensive_resource():
+    # Set up once (e.g. start a server, load a large file)
+    resource = start_test_server()
+    yield resource
+    resource.stop()
+
+@pytest.fixture(scope="session")   # one instance for the entire test run
+def database():
+    db = connect_to_test_db()
+    yield db
+    db.disconnect()</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>@pytest.mark.parametrize</h2>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — JUnit 5</span>
+        <pre><code class="language-java">@ParameterizedTest
+@MethodSource("validInputs")
+void test_parse(String input, int expected) {
+    assertEquals(expected, parse(input));
+}
+
+static Stream&lt;Arguments&gt; validInputs() {
+    return Stream.of(
+        Arguments.of("42", 42),
+        Arguments.of("-7", -7),
+        Arguments.of("0", 0)
+    );
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import pytest
+
+@pytest.mark.parametrize("input_str, expected", [
+    ("42",  42),
+    ("-7",  -7),
+    ("0",    0),
+    ("  5 ", 5),   # whitespace should be stripped
+])
+def test_parse_int(input_str: str, expected: int):
+    assert parse_int(input_str) == expected
+
+# Multiple arguments with ids for readable output
+@pytest.mark.parametrize("a, b, result", [
+    (1, 2, 3),
+    (0, 0, 0),
+    (-1, 1, 0),
+], ids=["positive", "zeros", "negative"])
+def test_add(a: int, b: int, result: int):
+    assert add(a, b) == result
+
+# Combine with fixtures
+@pytest.mark.parametrize("title", ["Task A", "Task B", "Task C"])
+def test_add_various_titles(manager, title):
+    manager.add(title)
+    assert manager.count() == 1</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mocking</h2>
+
+    <h3>unittest.mock — patch external dependencies</h3>
+    <p>Mocks replace external dependencies (HTTP calls, file system, databases) so tests are fast and isolated. Use <code>patch()</code> to replace a name during a test.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from unittest.mock import patch, MagicMock
+import pytest
+
+# Patch requests.get so no real HTTP calls are made
+def test_fetch_user_returns_data():
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"login": "torvalds", "public_repos": 8}
+
+    with patch("my_module.requests.get", return_value=mock_response) as mock_get:
+        user = fetch_user("torvalds")
+
+    assert user["login"] == "torvalds"
+    mock_get.assert_called_once_with(
+        "https://api.github.com/users/torvalds",
+        timeout=10,
+    )
+
+# Using pytest-mock (pip install pytest-mock) — cleaner syntax
+def test_fetch_user_404(mocker):
+    mock_response = MagicMock()
+    mock_response.status_code = 404
+    mock_response.raise_for_status.side_effect = Exception("404 Not Found")
+
+    mocker.patch("my_module.requests.get", return_value=mock_response)
+
+    with pytest.raises(ValueError, match="not found"):
+        fetch_user("nonexistent_user")</code></pre>
+    </div>
+
+    <h3>monkeypatch — pytest's built-in patcher</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import pytest
+import os
+
+def get_config() -> dict:
+    return {
+        "db_host": os.environ.get("DB_HOST", "localhost"),
+        "debug":   os.environ.get("DEBUG", "false") == "true",
+    }
+
+def test_reads_env_vars(monkeypatch):
+    monkeypatch.setenv("DB_HOST", "test-db")
+    monkeypatch.setenv("DEBUG", "true")
+
+    config = get_config()
+    assert config["db_host"] == "test-db"
+    assert config["debug"] is True
+    # env vars restored automatically after test
+
+def test_patches_function(monkeypatch):
+    monkeypatch.setattr("my_module.datetime", MagicMock(
+        now=lambda: datetime(2024, 1, 1, 12, 0, 0)
+    ))
+    # now datetime.now() always returns 2024-01-01 12:00:00 in this test</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Basic test</div>
+        <code>def test_name(): assert result == expected</code>
+        <p>File must be named <code>test_*.py</code>. Function must start with <code>test_</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Test exception</div>
+        <code>with pytest.raises(ValueError): risky_fn()</code>
+        <p>Use <code>match="pattern"</code> to also check the error message.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Fixture</div>
+        <code>@pytest.fixture / def my_thing(): return Thing()</code>
+        <p>Name the fixture as a test parameter to receive it.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Fixture with teardown</div>
+        <code>@pytest.fixture / def res(): setup(); yield obj; cleanup()</code>
+        <p>Code after <code>yield</code> always runs — even if the test fails.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Parametrize</div>
+        <code>@pytest.mark.parametrize("a,b", [(1,2),(3,4)])</code>
+        <p>Runs the test once per tuple. Each run appears as a separate test.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Mock</div>
+        <code>with patch("module.fn") as m: m.return_value = 42</code>
+        <p>Replaces <code>module.fn</code> with a mock for the duration of the <code>with</code> block.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Run specific tests</div>
+        <code>pytest -k "test_deposit" -v</code>
+        <p><code>-k</code> filters by name substring. <code>-v</code> shows each test. <code>-x</code> stops on first fail.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Coverage</div>
+        <code>pytest --cov=src --cov-report=term-missing</code>
+        <p>Requires <code>pip install pytest-cov</code>. Shows which lines aren't tested.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>pytest needs no class, no import of assert methods, and no test runner configuration. A file named <code>test_*.py</code> with functions named <code>test_*</code> is a complete test suite. This is dramatically less boilerplate than JUnit.</li>
+      <li>Fixtures are how pytest handles setup and teardown. They're composable (fixtures can depend on fixtures), scoped (function/module/session), and automatically injected — just name the fixture as a parameter.</li>
+      <li><code>@pytest.mark.parametrize</code> generates one test per input case — you see each as a separate pass/fail in the output. Use it instead of a loop inside a single test function.</li>
+      <li>Mock only external dependencies — HTTP, file I/O, databases, time, randomness. Don't mock your own classes; test them through their public interface. Over-mocking leads to tests that pass but don't catch real bugs.</li>
+      <li>Use <code>monkeypatch</code> for patching environment variables, module attributes, and file system calls — it automatically restores originals after each test, avoiding test-order dependencies.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 28</h4>
+      <ul>
+        <li>Write tests for the <code>TaskManager</code> from Day 14 using fixtures — one fixture for a clean manager, one for a manager with 3 tasks pre-loaded</li>
+        <li>Use <code>@parametrize</code> to test <code>add()</code> with valid inputs and test that <code>add("")</code> raises a <code>ValueError</code></li>
+        <li>Mock <code>requests.get</code> in a test for the Day 21 GitHub client — return fake user data and verify the function parses it correctly</li>
+        <li>Use <code>monkeypatch.setenv</code> to test that your config reader raises an error when a required env var is missing</li>
+        <li>Run <code>pytest --cov</code> on any module you've written and identify the untested code paths</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 28: Project — Sales Data Pipeline</strong><br>
+      The Week 4 capstone: read a raw CSV, clean it with Pandas, analyze it (total by region, top products, monthly trends), and output a summary report. NumPy + Pandas + file I/O working together on real messy data.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day26.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day28.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 27;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

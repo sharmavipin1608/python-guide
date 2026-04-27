@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 20 — Concurrency: threading + multiprocessing | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 20 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 20</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>Concurrency: threading + multiprocessing</h1>
+  <p>Python has three concurrency models. Today covers threads (good for I/O) and processes (good for CPU). The GIL is the key fact that determines which to pick.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>The GIL — why Python threads don't parallelize CPU-bound work</li>
+        <li><code>threading.Thread</code> — basic thread creation and join</li>
+        <li><code>ThreadPoolExecutor</code> — managed pool with futures</li>
+        <li><code>multiprocessing.Process</code> — true parallelism for CPU-bound work</li>
+        <li><code>ProcessPoolExecutor</code> — managed process pool</li>
+        <li>Thread safety: <code>Lock</code>, <code>Queue</code></li>
+        <li>Decision guide: threads vs processes vs async</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>threading.Thread</code> → <code>new Thread(runnable).start()</code></li>
+        <li><code>ThreadPoolExecutor</code> → <code>Executors.newFixedThreadPool(n)</code></li>
+        <li><code>ProcessPoolExecutor</code> → <code>ForkJoinPool</code> (separate JVM processes)</li>
+        <li><code>threading.Lock</code> → <code>synchronized</code> / <code>ReentrantLock</code></li>
+        <li><code>queue.Queue</code> → <code>LinkedBlockingQueue</code></li>
+        <li>GIL → no Java equivalent — JVM threads are truly parallel on multi-core</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>The GIL — Python's Big Concurrency Caveat</h2>
+
+    <p>CPython (the standard Python interpreter) has a <strong>Global Interpreter Lock (GIL)</strong> — a mutex that allows only one thread to execute Python bytecode at a time. This is Python's biggest difference from Java's threading model.</p>
+
+    <div class="callout">
+      <strong>What the GIL means in practice:</strong><br>
+      — <strong>CPU-bound work</strong> (number crunching, string processing): threads do NOT run in parallel. Multiple threads will NOT use multiple CPU cores. Use <code>multiprocessing</code> instead.<br>
+      — <strong>I/O-bound work</strong> (HTTP requests, file reads, DB queries): threads work great! While one thread waits for I/O, the GIL is released and other threads run.<br>
+      — <strong>The GIL is released</strong> during I/O operations, time.sleep(), and calls into C extensions (NumPy, etc.).
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — GIL demonstrated</span>
+      <pre><code class="language-python">import threading
+import time
+
+def cpu_task(n: int) -> int:
+    """CPU-bound: count to n."""
+    return sum(range(n))
+
+N = 50_000_000
+
+# Sequential: 2 tasks back-to-back
+start = time.perf_counter()
+cpu_task(N)
+cpu_task(N)
+print(f"Sequential: {time.perf_counter() - start:.2f}s")
+
+# Threaded: 2 threads running "simultaneously"
+start = time.perf_counter()
+t1 = threading.Thread(target=cpu_task, args=(N,))
+t2 = threading.Thread(target=cpu_task, args=(N,))
+t1.start(); t2.start()
+t1.join();  t2.join()
+print(f"Threaded:   {time.perf_counter() - start:.2f}s")
+# Both take ~the same time! GIL prevents true parallelism for CPU work.</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>threading — I/O-Bound Concurrency</h2>
+
+    <h3>Basic threading.Thread</h3>
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">Thread t = new Thread(() -> {
+    System.out.println("Running in thread: " +
+        Thread.currentThread().getName());
+});
+t.start();
+t.join(); // wait for completion</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import threading
+import time
+
+def worker(name: str, delay: float) -> None:
+    print(f"[{name}] starting")
+    time.sleep(delay)   # simulates I/O wait
+    print(f"[{name}] done after {delay}s")
+
+# Create and start threads
+t1 = threading.Thread(target=worker, args=("A", 1.0), name="thread-A")
+t2 = threading.Thread(target=worker, args=("B", 0.5), name="thread-B")
+t3 = threading.Thread(target=worker, args=("C", 0.8), name="thread-C")
+
+start = time.perf_counter()
+t1.start(); t2.start(); t3.start()
+
+# join() blocks until that thread finishes
+t1.join(); t2.join(); t3.join()
+
+print(f"Total: {time.perf_counter() - start:.2f}s")
+# ~1.0s — concurrent I/O! Sequential would be 2.3s</code></pre>
+      </div>
+    </div>
+
+    <h3>ThreadPoolExecutor — the right way</h3>
+    <p>Managing individual threads is verbose. <code>ThreadPoolExecutor</code> is the idiomatic approach — it pools threads for reuse, returns <code>Future</code> objects, and handles exceptions cleanly. This is Python's <code>ExecutorService</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">ExecutorService pool =
+    Executors.newFixedThreadPool(4);
+
+List&lt;Future&lt;Integer&gt;&gt; futures = new ArrayList&lt;&gt;();
+for (String url : urls) {
+    futures.add(pool.submit(() -> fetch(url)));
+}
+for (Future&lt;Integer&gt; f : futures) {
+    System.out.println(f.get());
+}
+pool.shutdown();</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from concurrent.futures import ThreadPoolExecutor, as_completed
+import requests
+
+def fetch(url: str) -> tuple[str, int]:
+    resp = requests.get(url, timeout=5)
+    return url, len(resp.content)
+
+urls = [
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/1",
+    "https://httpbin.org/delay/1",
+]
+
+# submit() — fire and forget, get Future back
+with ThreadPoolExecutor(max_workers=4) as pool:
+    futures = {pool.submit(fetch, url): url for url in urls}
+
+    for future in as_completed(futures):
+        url = futures[future]
+        try:
+            _, size = future.result()
+            print(f"{url}: {size} bytes")
+        except Exception as e:
+            print(f"{url} failed: {e}")
+
+# map() — simpler when you just need results in order
+with ThreadPoolExecutor(max_workers=4) as pool:
+    results = list(pool.map(fetch, urls))   # blocks until all done</code></pre>
+      </div>
+    </div>
+
+    <h3>Thread safety: Lock and Queue</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import threading
+from queue import Queue
+
+# Lock — protect shared mutable state
+counter = 0
+lock = threading.Lock()
+
+def increment(n: int) -> None:
+    global counter
+    for _ in range(n):
+        with lock:         # acquire before, release after
+            counter += 1  # critical section
+
+threads = [threading.Thread(target=increment, args=(10_000,)) for _ in range(10)]
+for t in threads: t.start()
+for t in threads: t.join()
+print(counter)   # always 100_000 — lock prevents race conditions
+
+
+# Queue — thread-safe producer/consumer
+q: Queue[str] = Queue()
+
+def producer() -> None:
+    for i in range(5):
+        q.put(f"item-{i}")
+        print(f"Produced item-{i}")
+    q.put(None)   # sentinel to signal done
+
+def consumer() -> None:
+    while True:
+        item = q.get()
+        if item is None:
+            break
+        print(f"Consumed {item}")
+
+t_prod = threading.Thread(target=producer)
+t_cons = threading.Thread(target=consumer)
+t_prod.start(); t_cons.start()
+t_prod.join();  t_cons.join()</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>multiprocessing — CPU-Bound Parallelism</h2>
+
+    <h3>ProcessPoolExecutor — parallel CPU work</h3>
+    <p>Each process gets its own Python interpreter and GIL — true multi-core parallelism. Processes don't share memory, so data is pickled (serialized) between them. Start-up cost is higher than threads.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — ForkJoinPool</span>
+        <pre><code class="language-java">ForkJoinPool pool = new ForkJoinPool();
+List&lt;Future&lt;Long&gt;&gt; futures = urls.stream()
+    .map(n -> pool.submit(() -> heavyCompute(n)))
+    .toList();
+// Each task runs on a separate core</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from concurrent.futures import ProcessPoolExecutor
+import time
+
+def cpu_heavy(n: int) -> int:
+    """Simulate CPU-bound work."""
+    return sum(i * i for i in range(n))
+
+numbers = [5_000_000] * 4   # 4 heavy tasks
+
+# Sequential
+start = time.perf_counter()
+results = [cpu_heavy(n) for n in numbers]
+print(f"Sequential: {time.perf_counter() - start:.2f}s")
+
+# Parallel — uses all CPU cores
+start = time.perf_counter()
+with ProcessPoolExecutor() as pool:   # defaults to os.cpu_count() workers
+    results = list(pool.map(cpu_heavy, numbers))
+print(f"Parallel:   {time.perf_counter() - start:.2f}s")
+# On a 4-core machine: ~4x faster</code></pre>
+      </div>
+    </div>
+
+    <div class="callout">
+      <strong>Pickling requirement:</strong> Arguments and return values must be picklable (serializable). Lambda functions and locally-defined functions are NOT picklable — define your worker function at module level.
+    </div>
+  </section>
+
+  <section>
+    <h2>Decision Guide</h2>
+
+    <table class="decision-table">
+      <thead>
+        <tr><th>Scenario</th><th>Best tool</th><th>Why</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Many HTTP requests</td><td>ThreadPoolExecutor or asyncio</td><td>I/O-bound; GIL released during network wait</td></tr>
+        <tr><td>Read/write many files</td><td>ThreadPoolExecutor</td><td>I/O-bound; threads work well</td></tr>
+        <tr><td>Number crunching / data processing</td><td>ProcessPoolExecutor or NumPy</td><td>CPU-bound; needs true parallelism</td></tr>
+        <tr><td>Image/video processing</td><td>ProcessPoolExecutor</td><td>CPU-bound; each frame independent</td></tr>
+        <tr><td>Thousands of I/O operations</td><td>asyncio (Day 22)</td><td>Threads have overhead; async scales better</td></tr>
+        <tr><td>Mix of I/O + CPU</td><td>asyncio + ProcessPoolExecutor</td><td>Async for I/O, offload CPU to processes</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout-teal">
+      <strong>Java developers note:</strong> In Java, threads parallelize CPU work because the JVM has no GIL. In Python, threads only help for I/O. This is the single most important concurrency fact to internalize.
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Raw thread</div>
+        <code>t = Thread(target=fn, args=(x,)); t.start(); t.join()</code>
+        <p>Low-level. Use <code>ThreadPoolExecutor</code> for most cases.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Thread pool</div>
+        <code>with ThreadPoolExecutor(max_workers=8) as p: p.map(fn, items)</code>
+        <p>Java's <code>ExecutorService</code>. Use for I/O-bound concurrent tasks.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Process pool</div>
+        <code>with ProcessPoolExecutor() as p: p.map(fn, items)</code>
+        <p>True CPU parallelism. Function must be defined at module level.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Future result</div>
+        <code>f = pool.submit(fn, arg); f.result(timeout=5)</code>
+        <p><code>result()</code> blocks and raises any exception the task threw.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">as_completed</div>
+        <code>for f in as_completed(futures): f.result()</code>
+        <p>Iterate results as they finish — don't wait for the slowest one first.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Lock</div>
+        <code>lock = Lock(); with lock: shared_state += 1</code>
+        <p>Protect shared mutable state. Use as context manager.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Thread-safe queue</div>
+        <code>q = Queue(); q.put(x); x = q.get()</code>
+        <p>The right way to pass data between threads. Thread-safe by design.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Daemon threads</div>
+        <code>t = Thread(target=fn, daemon=True)</code>
+        <p>Dies when main program exits. Good for background workers that shouldn't block shutdown.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>The GIL means Python threads cannot parallelize CPU-bound work — adding threads to a number-crunching loop makes it slower due to context-switch overhead, not faster. This is the opposite of Java's threading model.</li>
+      <li>Threads ARE useful for I/O-bound work (HTTP, DB, file I/O) because the GIL is released during I/O operations. A pool of 20 threads making HTTP requests concurrently is faster than doing them sequentially.</li>
+      <li><code>ThreadPoolExecutor</code> and <code>ProcessPoolExecutor</code> share the same interface — both have <code>submit()</code>, <code>map()</code>, and work as context managers. Switching between them is often a one-line change.</li>
+      <li>Protect shared mutable state with <code>threading.Lock</code> as a context manager. Use <code>queue.Queue</code> for producer/consumer patterns — it's thread-safe by design, unlike a plain <code>list</code>.</li>
+      <li>For I/O-bound work at scale (hundreds or thousands of concurrent operations), <code>asyncio</code> (Day 22) is more efficient than threads — it handles all concurrency on a single thread with no GIL concerns and much less memory overhead.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 21</h4>
+      <ul>
+        <li>Use <code>ThreadPoolExecutor</code> to fetch 10 URLs concurrently and measure the speedup vs sequential</li>
+        <li>Demonstrate the GIL: time a CPU-heavy task run sequentially vs with threads — confirm threads don't help</li>
+        <li>Use <code>ProcessPoolExecutor</code> for the same CPU task — measure the speedup vs threads</li>
+        <li>Build a producer/consumer with <code>threading.Thread</code> + <code>queue.Queue</code>: producer generates 20 numbers, consumer squares them</li>
+        <li>Add error handling to your <code>ThreadPoolExecutor</code> code using <code>future.result()</code> inside a try/except</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 21: Project — GitHub REST API Client</strong><br>
+      Project day: build a real CLI tool that talks to the GitHub API. You'll use <code>requests</code>, <code>json</code>, <code>sys.argv</code>, <code>pathlib</code>, and <code>datetime</code> together in a complete program — with pagination and rate limit handling as stretch goals.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day19.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day21.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 20;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

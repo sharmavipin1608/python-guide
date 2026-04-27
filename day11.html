@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 11 — Decorators Deep Dive | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 11 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 11</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Decorators Deep Dive</h1>
+  <p>Decorators are functions that wrap other functions. Once you understand them as plain Python — not magic — you can write logging, timing, caching, and access control in a single reusable line.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>How decorators work under the hood — functions wrapping functions</li>
+        <li>Writing a simple decorator step by step</li>
+        <li><code>functools.wraps</code> — preserving function metadata</li>
+        <li>Decorators with arguments — the three-layer pattern</li>
+        <li>Stacking multiple decorators</li>
+        <li>Built-in decorators: <code>@staticmethod</code>, <code>@classmethod</code>, <code>@property</code></li>
+        <li><code>@lru_cache</code> for memoization</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li>Decorator pattern → Spring AOP <code>@Around</code> advice</li>
+        <li><code>@lru_cache</code> → Spring <code>@Cacheable</code></li>
+        <li>Stacked decorators → multiple AOP interceptors in a chain</li>
+        <li>Decorator with args → Spring <code>@Cacheable(cacheNames="x")</code> — annotation with config</li>
+        <li><code>functools.wraps</code> → preserving method signatures through proxies</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- CONTENT: How decorators work -->
+  <section>
+    <h2>How Decorators Work</h2>
+
+    <h3>Functions as first-class objects (recap)</h3>
+    <p>Decorators are possible because Python functions are objects — they can be passed as arguments, returned from other functions, and assigned to variables. A decorator is simply a callable that takes a function and returns a (usually enhanced) function.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Functions are objects — you can pass them around
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+fn = greet               # assign function to variable (no call)
+print(fn("Alice"))       # Hello, Alice!
+print(fn.__name__)       # greet
+
+# A function that accepts a function and returns a function
+def shout(func):
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        return result.upper()
+    return wrapper
+
+shouting_greet = shout(greet)
+print(shouting_greet("Alice"))   # HELLO, ALICE!</code></pre>
+    </div>
+
+    <h3>The @ syntax is just shorthand</h3>
+    <p>The <code>@decorator</code> syntax is sugar. <code>@shout</code> above a function definition is exactly equivalent to <code>greet = shout(greet)</code> after it. Nothing more.</p>
+
+    <div class="diagram-box">
+      <span class="highlight">@shout</span><br>
+      <span class="highlight">def greet(name): ...</span><br>
+      <br>
+      <span class="teal"># is exactly the same as:</span><br>
+      <span class="highlight">def greet(name): ...</span><br>
+      <span class="highlight">greet = shout(greet)</span>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">def shout(func):
+    def wrapper(*args, **kwargs):
+        result = func(*args, **kwargs)
+        return result.upper()
+    return wrapper
+
+@shout
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+# greet is now the wrapper — the original greet is captured inside
+print(greet("Alice"))   # HELLO, ALICE!</code></pre>
+    </div>
+  </section>
+
+  <!-- CONTENT: Writing a decorator -->
+  <section>
+    <h2>Writing Decorators</h2>
+
+    <h3>Step-by-step: a timing decorator</h3>
+    <p>The standard decorator pattern always follows the same structure: outer function receives the function to wrap, defines an inner <code>wrapper</code> that adds behaviour before/after, and returns the wrapper.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — Spring AOP</span>
+        <pre><code class="language-java">@Aspect
+@Component
+public class TimingAspect {
+
+    @Around("@annotation(Timed)")
+    public Object time(ProceedingJoinPoint jp)
+            throws Throwable {
+        long start = System.currentTimeMillis();
+        Object result = jp.proceed();
+        long elapsed = System.currentTimeMillis() - start;
+        System.out.printf("%s took %dms%n",
+            jp.getSignature().getName(), elapsed);
+        return result;
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import time
+import functools
+
+def timed(func):
+    """Decorator: prints how long the function took."""
+    @functools.wraps(func)          # preserves func's metadata
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        elapsed = time.perf_counter() - start
+        print(f"{func.__name__} took {elapsed:.4f}s")
+        return result
+    return wrapper
+
+
+@timed
+def slow_sum(n: int) -> int:
+    return sum(range(n))
+
+
+print(slow_sum(10_000_000))
+# slow_sum took 0.3421s
+# 49999995000000</code></pre>
+      </div>
+    </div>
+
+    <h3>functools.wraps — why it matters</h3>
+    <p>Without <code>@functools.wraps(func)</code>, the wrapped function loses its name, docstring, and signature — it looks like <code>wrapper</code> to any tooling, debuggers, or documentation generators. Always include it.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">def bad_decorator(func):
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper   # no @functools.wraps
+
+def good_decorator(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        return func(*args, **kwargs)
+    return wrapper
+
+
+@bad_decorator
+def my_func():
+    """Does something important."""
+    pass
+
+@good_decorator
+def my_other_func():
+    """Does something important."""
+    pass
+
+print(my_func.__name__)        # wrapper  ← WRONG
+print(my_func.__doc__)         # None     ← lost!
+
+print(my_other_func.__name__)  # my_other_func  ← correct
+print(my_other_func.__doc__)   # Does something important.</code></pre>
+    </div>
+
+    <h3>Practical decorators: logging and retry</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import functools
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+def logged(func):
+    """Log function entry, exit, and any exceptions."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        logging.info(f"Calling {func.__name__}({args}, {kwargs})")
+        try:
+            result = func(*args, **kwargs)
+            logging.info(f"{func.__name__} returned {result!r}")
+            return result
+        except Exception as e:
+            logging.error(f"{func.__name__} raised {type(e).__name__}: {e}")
+            raise
+    return wrapper
+
+
+def retry(times: int = 3):
+    """Retry a function up to `times` attempts on exception."""
+    def decorator(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(1, times + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    logging.warning(f"Attempt {attempt}/{times} failed: {e}")
+            raise last_exc
+        return wrapper
+    return decorator   # note: three levels for parameterised decorator
+
+
+@logged
+def divide(a, b):
+    return a / b
+
+divide(10, 2)    # INFO: Calling divide, INFO: returned 5.0
+divide(10, 0)    # ERROR: divide raised ZeroDivisionError</code></pre>
+    </div>
+  </section>
+
+  <!-- CONTENT: Decorators with arguments -->
+  <section>
+    <h2>Decorators with Arguments</h2>
+
+    <h3>The three-layer pattern</h3>
+    <p>When a decorator needs configuration — like <code>@retry(times=5)</code> — you add one more layer: a function that accepts the arguments and returns the actual decorator. Three layers: argument receiver → decorator → wrapper.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import functools
+import time
+
+def rate_limit(calls_per_second: float):
+    """Decorator factory: limit how often a function can be called."""
+    min_interval = 1.0 / calls_per_second
+    last_called = {}   # mutable dict to allow closure mutation
+
+    def decorator(func):
+        last_called[func] = 0.0
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            elapsed = time.time() - last_called[func]
+            if elapsed < min_interval:
+                time.sleep(min_interval - elapsed)
+            last_called[func] = time.time()
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
+
+
+@rate_limit(calls_per_second=2)
+def fetch_data(url: str) -> str:
+    return f"data from {url}"
+
+
+# Called at most 2 times per second regardless of how fast you loop
+for i in range(5):
+    print(fetch_data(f"https://api.example.com/{i}"))</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Remember the layers:</strong>
+      <br><code>@decorator</code> — two layers: <code>decorator(func)</code> → <code>wrapper</code>
+      <br><code>@decorator(arg)</code> — three layers: <code>decorator(arg)</code> → <code>actual_decorator(func)</code> → <code>wrapper</code>
+    </div>
+  </section>
+
+  <!-- CONTENT: Stacking -->
+  <section>
+    <h2>Stacking Multiple Decorators</h2>
+
+    <p>You can stack decorators — they apply bottom-up (closest to the function first). The order matters: the outermost decorator runs first when the function is called.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import functools, time, logging
+
+def timed(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        print(f"[timed] {func.__name__}: {time.perf_counter()-start:.4f}s")
+        return result
+    return wrapper
+
+def logged(func):
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        print(f"[logged] calling {func.__name__}")
+        return func(*args, **kwargs)
+    return wrapper
+
+def validate_positive(func):
+    @functools.wraps(func)
+    def wrapper(n, *args, **kwargs):
+        if n <= 0:
+            raise ValueError(f"Expected positive, got {n}")
+        return func(n, *args, **kwargs)
+    return wrapper
+
+
+# Applied bottom-up:
+# validate_positive wraps compute first
+# then logged wraps that
+# then timed wraps everything
+@timed
+@logged
+@validate_positive
+def compute(n: int) -> int:
+    return sum(range(n))
+
+
+result = compute(1_000_000)
+# [logged] calling compute
+# [timed] compute: 0.0412s
+print(result)  # 499999500000
+
+# compute(-1)  # ValueError: Expected positive, got -1</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Reading order:</strong> Decorators stack like a sandwich. <code>@timed</code> is the outermost slice — it runs first on call and last on return. <code>@validate_positive</code> is innermost — it runs just before the real function.
+    </div>
+  </section>
+
+  <!-- CONTENT: Built-in + lru_cache -->
+  <section>
+    <h2>Built-in Decorators + @lru_cache</h2>
+
+    <h3>@staticmethod and @classmethod (recap)</h3>
+    <p>These are built-in decorators you already saw on Day 8. They're implemented as descriptors, not simple wrapper functions, but the usage is the same decorator syntax.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">class MathUtils:
+    PI = 3.14159
+
+    @staticmethod          # no self, no cls — pure utility
+    def square(x: float) -> float:
+        return x * x
+
+    @classmethod           # receives class as first arg
+    def circle_area(cls, r: float) -> float:
+        return cls.PI * cls.square(r)
+
+
+print(MathUtils.square(4))          # 16.0
+print(MathUtils.circle_area(5))     # 78.53975</code></pre>
+    </div>
+
+    <h3>@functools.lru_cache — memoization</h3>
+    <p><code>lru_cache</code> caches the return value of a function for given arguments. Subsequent calls with the same arguments return the cached value instantly. LRU = Least Recently Used — it evicts old entries when the cache is full.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — Spring Cache</span>
+        <pre><code class="language-java">@Service
+public class FibService {
+
+    @Cacheable("fibonacci")
+    public long fib(int n) {
+        if (n <= 1) return n;
+        return fib(n - 1) + fib(n - 2);
+    }
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from functools import lru_cache
+
+@lru_cache(maxsize=None)   # None = unlimited cache size
+def fib(n: int) -> int:
+    if n <= 1:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+
+# Without cache: O(2^n) — fib(40) would take seconds
+# With cache: O(n) — computed once per unique n
+print(fib(100))    # 354224848179261915075 — instant
+
+# Inspect the cache
+print(fib.cache_info())
+# CacheInfo(hits=98, misses=101, maxsize=None, currsize=101)
+
+# Clear the cache if needed
+fib.cache_clear()
+
+
+# Python 3.9+: @cache is shorthand for @lru_cache(maxsize=None)
+from functools import cache
+
+@cache
+def factorial(n: int) -> int:
+    return 1 if n == 0 else n * factorial(n - 1)</code></pre>
+    </div>
+    </div>
+
+    <div class="callout">
+      <strong>Requirement:</strong> <code>lru_cache</code> works only with hashable arguments — all args must be usable as dict keys. Lists, dicts, and other mutables won't work. Use tuples instead.
+    </div>
+
+    <h3>Class-based decorators</h3>
+    <p>A decorator can also be a class with <code>__call__</code>. This is useful when the decorator needs to maintain state across calls.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import functools
+
+class CallCounter:
+    """Decorator class that counts how many times a function is called."""
+
+    def __init__(self, func):
+        functools.update_wrapper(self, func)  # like @functools.wraps
+        self.func = func
+        self.call_count = 0
+
+    def __call__(self, *args, **kwargs):
+        self.call_count += 1
+        return self.func(*args, **kwargs)
+
+
+@CallCounter
+def greet(name: str) -> str:
+    return f"Hello, {name}!"
+
+
+greet("Alice")
+greet("Bob")
+greet("Carol")
+print(greet.call_count)   # 3 — state survives across calls
+print(greet("Dave"))      # Hello, Dave!
+print(greet.call_count)   # 4</code></pre>
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Basic decorator</div>
+        <code>def dec(func): / @functools.wraps(func) / def wrapper(...): ... / return wrapper</code>
+        <p>Always include <code>@functools.wraps(func)</code> on the inner wrapper.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Apply decorator</div>
+        <code>@dec / def fn(): ...</code>
+        <p>Equivalent to <code>fn = dec(fn)</code> — just syntactic sugar.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Decorator with args</div>
+        <code>def dec(arg): / def decorator(func): / def wrapper(...): ... / return wrapper / return decorator</code>
+        <p>Three layers. <code>@dec(arg)</code> calls <code>dec(arg)</code> first, which returns the real decorator.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Stack decorators</div>
+        <code>@outer / @inner / def fn(): ...</code>
+        <p>Applied bottom-up: <code>inner</code> wraps <code>fn</code> first, then <code>outer</code> wraps that.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Memoization</div>
+        <code>from functools import cache / @cache / def fn(n): ...</code>
+        <p>Caches results by argument. Requires hashable args. Use <code>fn.cache_clear()</code> to reset.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">LRU cache with limit</div>
+        <code>@lru_cache(maxsize=128)</code>
+        <p>Keeps last 128 unique arg combinations. <code>fn.cache_info()</code> shows hits/misses.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">functools.wraps</div>
+        <code>@functools.wraps(func)</code>
+        <p>Copies <code>__name__</code>, <code>__doc__</code>, <code>__annotations__</code> from original to wrapper.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Class-based decorator</div>
+        <code>class Dec: / def __init__(self, func): ... / def __call__(self, ...): ...</code>
+        <p>Use when the decorator needs persistent state across calls.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- WRAP-UP -->
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>A decorator is just a function that takes a function and returns a (usually enhanced) function. The <code>@</code> syntax is sugar for <code>fn = decorator(fn)</code>. Once you see it as plain Python, there's no magic.</li>
+      <li>Always apply <code>@functools.wraps(func)</code> inside your decorator's wrapper function. Without it, the wrapped function loses its name, docstring, and signature — breaking debugging, documentation, and introspection tools.</li>
+      <li>Decorators with arguments need three layers: the outer function receives the arguments, the middle function receives the function to wrap, and the inner <code>wrapper</code> does the actual work.</li>
+      <li>Stacked decorators apply bottom-up at definition time. The topmost decorator is outermost at call time — think of it as the first line of defence (e.g., auth check before timing).</li>
+      <li><code>@cache</code> / <code>@lru_cache</code> from <code>functools</code> is one-line memoization. It's the Python equivalent of Spring's <code>@Cacheable</code> — use it for expensive pure functions, especially recursive ones like Fibonacci.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 12</h4>
+      <ul>
+        <li>Write a <code>@validate_types</code> decorator that inspects a function's type hints and raises <code>TypeError</code> if the caller passes the wrong types</li>
+        <li>Write a <code>@singleton</code> decorator for classes that ensures only one instance is ever created</li>
+        <li>Combine <code>@timed</code> and <code>@logged</code> on a function and observe the execution order in both directions (before-call vs after-return)</li>
+        <li>Use <code>@lru_cache</code> on a recursive coin-change function and compare performance with and without it using <code>timeit</code></li>
+        <li>Write a <code>@deprecated(msg)</code> decorator factory that prints a warning message when the decorated function is called</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 12: Context Managers</strong><br>
+      You'll learn how the <code>with</code> statement works under the hood, how to write your own context managers using both the class-based (<code>__enter__</code>/<code>__exit__</code>) and generator-based (<code>@contextmanager</code>) approaches — and why this is Python's cleaner answer to Java's <code>try-with-resources</code>.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day10.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day12.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+
+  const DAY = 11;
+  const btn = document.getElementById('done-btn');
+
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

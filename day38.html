@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 38 — ChromaDB + Vector Stores | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 3 — Backend + AI: orange badge */
+    .phase-badge { background: #2a1a0f; color: #ff6b35; border: 1px solid #4a2a1a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 38 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 38</span>
+    <span class="phase-badge">Phase 3 — Backend + AI</span>
+  </div>
+  <h1>ChromaDB + Vector Stores</h1>
+  <p>Embeddings turn text into vectors. Vector databases find similar vectors fast. Together they power RAG — the pattern that lets an LLM answer questions about your private documents without fine-tuning.</p>
+</div>
+
+<main>
+
+  <!-- PLAN -->
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>What embeddings are — text → numbers <span style="color:#555">~10 min</span></li>
+        <li>ChromaDB setup and collections <span style="color:#555">~15 min</span></li>
+        <li>Adding documents and querying by similarity <span style="color:#555">~15 min</span></li>
+        <li>Embedding functions — OpenAI and sentence-transformers <span style="color:#555">~10 min</span></li>
+        <li>The RAG pattern end-to-end <span style="color:#555">~20 min</span></li>
+        <li>Persisting ChromaDB to disk <span style="color:#555">~5 min</span></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java Parallels</h4>
+      <ul>
+        <li><strong>Embedding</strong> → a feature vector, like a hash but semantically meaningful</li>
+        <li><strong>ChromaDB collection</strong> → a table where similarity (not equality) is the primary query</li>
+        <li><strong>query_texts()</strong> → a "SELECT ... ORDER BY semantic_distance" that doesn't exist in SQL</li>
+        <li><strong>RAG</strong> → like a search engine (Elasticsearch) feeding context into a prompt instead of a UI</li>
+        <li><strong>Document chunking</strong> → like paginating a large ResultSet before passing it to the next layer</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- EMBEDDINGS -->
+  <section>
+    <h2>1. What Are Embeddings?</h2>
+    <p>An embedding is a list of numbers (a vector) that represents a piece of text. The key property: texts with similar <em>meaning</em> have similar vectors — their distance in vector space is small. This is fundamentally different from text search, which matches keywords.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — generating embeddings</span>
+      <pre><code class="language-python">from openai import OpenAI
+
+client = OpenAI()
+
+def embed(text: str) -> list[float]:
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text,
+    )
+    return response.data[0].embedding
+
+v1 = embed("Python dictionary")
+v2 = embed("Java HashMap")
+v3 = embed("chocolate cake recipe")
+
+# v1 and v2 are close (both about key-value data structures)
+# v3 is far from both
+
+print(len(v1))       # 1536 — the vector has 1536 dimensions
+print(v1[:5])        # [-0.023, 0.041, -0.013, ...]</code></pre>
+    </div>
+
+    <div class="callout-teal">
+      <strong>Why not just use string similarity?</strong> "Python dictionary" and "Java HashMap" share zero words, but they're semantically identical. Embeddings capture meaning, not characters. That's the fundamental advantage.
+    </div>
+  </section>
+
+  <!-- CHROMADB SETUP -->
+  <section>
+    <h2>2. ChromaDB Setup</h2>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install chromadb openai
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — ChromaDB basics</span>
+      <pre><code class="language-python">import chromadb
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+
+# In-memory client (for development and testing)
+client = chromadb.Client()
+
+# Persistent client — saves to disk
+client = chromadb.PersistentClient(path="./chroma_db")
+
+# Embedding function — called automatically when you add/query
+embedding_fn = OpenAIEmbeddingFunction(
+    api_key="your-api-key",
+    model_name="text-embedding-3-small",
+)
+
+# Create a collection (like a table for vectors)
+collection = client.get_or_create_collection(
+    name="python_docs",
+    embedding_function=embedding_fn,
+    metadata={"hnsw:space": "cosine"},   # cosine similarity (default)
+)</code></pre>
+    </div>
+  </section>
+
+  <!-- ADDING AND QUERYING -->
+  <section>
+    <h2>3. Adding Documents and Querying</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python — add documents</span>
+      <pre><code class="language-python">documents = [
+    "Python generators use yield to produce values lazily, one at a time.",
+    "The with statement implements the context manager protocol via __enter__ and __exit__.",
+    "Decorators are functions that wrap other functions, modifying their behavior.",
+    "Python's GIL prevents true CPU parallelism in threads; use multiprocessing for CPU work.",
+    "FastAPI uses Pydantic models to validate request bodies automatically.",
+    "SQLAlchemy's select() returns a Select object you execute via session.scalars().",
+    "asyncio.gather() runs multiple coroutines concurrently and waits for all to complete.",
+    "List comprehensions replace for-loop + append patterns: [x*2 for x in range(10)].",
+]
+
+# Add documents — ChromaDB embeds them automatically using the embedding_fn
+collection.add(
+    documents=documents,
+    ids=[f"doc-{i}" for i in range(len(documents))],    # unique IDs required
+    metadatas=[{"day": i + 1} for i in range(len(documents))],  # optional metadata
+)</code></pre>
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python — semantic search</span>
+      <pre><code class="language-python"># Find the 3 most relevant documents for a query
+results = collection.query(
+    query_texts=["how do I run tasks at the same time in Python?"],
+    n_results=3,
+)
+
+# Results are sorted by similarity (closest first)
+for doc, distance, metadata in zip(
+    results["documents"][0],
+    results["distances"][0],
+    results["metadatas"][0],
+):
+    print(f"Distance: {distance:.4f} | {doc[:80]}...")
+
+# Output (roughly):
+# Distance: 0.1823 | asyncio.gather() runs multiple coroutines concurrently...
+# Distance: 0.2941 | Python's GIL prevents true CPU parallelism...
+# Distance: 0.4102 | Python generators use yield to produce values lazily...</code></pre>
+    </div>
+
+    <h3>Filtering with Metadata</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python"># Query only documents from a specific day range
+results = collection.query(
+    query_texts=["context management"],
+    n_results=2,
+    where={"day": {"$gte": 3}},       # metadata filter
+)
+
+# Update and delete
+collection.update(ids=["doc-0"], documents=["Updated text..."])
+collection.delete(ids=["doc-0"])
+
+# Get collection stats
+print(collection.count())    # number of documents stored</code></pre>
+    </div>
+  </section>
+
+  <!-- SENTENCE TRANSFORMERS -->
+  <section>
+    <h2>4. Free Embeddings with sentence-transformers</h2>
+    <p>OpenAI embeddings cost money per token. For local development or open-source projects, sentence-transformers runs embedding models locally — free, private, no API key needed.</p>
+
+    <div class="shell-block">
+      <span class="prompt">$ </span>pip install sentence-transformers
+    </div>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+# Downloads model on first use (~90MB for all-MiniLM-L6-v2)
+embedding_fn = SentenceTransformerEmbeddingFunction(
+    model_name="all-MiniLM-L6-v2"   # good balance: fast, decent quality
+)
+
+collection = client.get_or_create_collection(
+    name="local_docs",
+    embedding_function=embedding_fn,
+)
+
+# Everything else is identical — the embedding_fn is swappable
+collection.add(
+    documents=["Python uses duck typing instead of interfaces."],
+    ids=["doc-1"],
+)</code></pre>
+    </div>
+  </section>
+
+  <!-- RAG PATTERN -->
+  <section>
+    <h2>5. The RAG Pattern End-to-End</h2>
+    <p>RAG = Retrieve → Augment → Generate. Find relevant chunks from your vector store, inject them into the prompt as context, then let the LLM answer based on that context. This is how you give an LLM knowledge of your private documents.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python — complete RAG pipeline</span>
+      <pre><code class="language-python">import chromadb
+from chromadb.utils.embedding_functions import OpenAIEmbeddingFunction
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+
+# Setup
+client = chromadb.PersistentClient(path="./chroma_db")
+embedding_fn = OpenAIEmbeddingFunction(
+    api_key="your-api-key",
+    model_name="text-embedding-3-small",
+)
+collection = client.get_or_create_collection("python_docs", embedding_function=embedding_fn)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+
+RAG_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """You are a Python expert helping a Java developer learn Python.
+Answer the question using ONLY the provided context.
+If the context doesn't contain the answer, say so honestly.
+
+Context:
+{context}"""),
+    ("human", "{question}"),
+])
+
+def rag_query(question: str, n_results: int = 3) -> str:
+    # Step 1: RETRIEVE — find relevant chunks
+    results = collection.query(
+        query_texts=[question],
+        n_results=n_results,
+    )
+    retrieved_docs = results["documents"][0]
+
+    # Step 2: AUGMENT — build context string
+    context = "\n\n".join(
+        f"[Source {i+1}]: {doc}"
+        for i, doc in enumerate(retrieved_docs)
+    )
+
+    # Step 3: GENERATE — LLM answers using the context
+    chain = RAG_PROMPT | llm
+    response = chain.invoke({"context": context, "question": question})
+    return response.content
+
+# Use it
+answer = rag_query("How do I run multiple things concurrently in Python?")
+print(answer)</code></pre>
+    </div>
+
+    <h3>Chunking Strategy</h3>
+    <div class="python-block">
+      <span class="block-label">Python — chunking a large document</span>
+      <pre><code class="language-python">from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=500,         # characters per chunk
+    chunk_overlap=50,       # overlap between chunks (preserves context at boundaries)
+    separators=["\n\n", "\n", ". ", " "],  # split preference order
+)
+
+with open("python_tutorial.txt") as f:
+    text = f.read()
+
+chunks = splitter.split_text(text)
+
+# Add all chunks to ChromaDB
+collection.add(
+    documents=chunks,
+    ids=[f"chunk-{i}" for i in range(len(chunks))],
+)
+
+print(f"Indexed {len(chunks)} chunks from the document")</code></pre>
+    </div>
+  </section>
+
+  <!-- QUICK REFERENCE -->
+  <section>
+    <h2>Quick Reference</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Persistent client</div>
+        <code>chromadb.PersistentClient(path="./chroma_db")</code>
+        <p>Saves to disk; survives restarts</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Get or create collection</div>
+        <code>client.get_or_create_collection("name", embedding_function=fn)</code>
+        <p>Idempotent — safe to call on every startup</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Add documents</div>
+        <code>collection.add(documents=[...], ids=[...])</code>
+        <p>IDs must be unique; embeddings computed automatically</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Semantic search</div>
+        <code>collection.query(query_texts=[...], n_results=3)</code>
+        <p>Returns closest documents by embedding distance</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">OpenAI embeddings</div>
+        <code>OpenAIEmbeddingFunction(model_name="text-embedding-3-small")</code>
+        <p>1536 dimensions; ~$0.02 per million tokens</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Local embeddings</div>
+        <code>SentenceTransformerEmbeddingFunction("all-MiniLM-L6-v2")</code>
+        <p>Free, runs locally, 384 dimensions</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Metadata filter</div>
+        <code>where={"field": {"$eq": "value"}}</code>
+        <p>Operators: $eq, $ne, $gt, $gte, $lt, $lte, $in</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Text splitter</div>
+        <code>RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)</code>
+        <p>From langchain_text_splitters; handles large documents</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">RAG pattern</div>
+        <code>retrieve → inject as context → generate</code>
+        <p>Never send the whole document; only the relevant chunks</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- WRAP UP -->
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>Embeddings capture semantic meaning, not keywords. "Python dict" and "Java HashMap" have similar vectors even though they share no words.</li>
+      <li>ChromaDB's <code>get_or_create_collection</code> is idempotent — safe to call on every app startup. Use <code>PersistentClient</code> for anything beyond a quick demo.</li>
+      <li>The RAG pattern is three steps: retrieve relevant chunks, inject them as context in the prompt, let the LLM generate from that context. Keep each step explicit so you can debug which step fails.</li>
+      <li>Chunk size matters. Too large: you waste tokens on irrelevant content. Too small: you lose context. 300–600 characters with 50-character overlap is a reasonable starting point for prose.</li>
+      <li>Swap <code>OpenAIEmbeddingFunction</code> for <code>SentenceTransformerEmbeddingFunction</code> for zero-cost local embeddings — useful during development and for private data.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Practice Before Day 39</h4>
+      <ul>
+        <li>Index the content of a few Markdown files from a project into a ChromaDB collection</li>
+        <li>Build a basic RAG query function and test it with questions the documents can answer</li>
+        <li>Try n_results=1 vs n_results=5 — see how it affects answer quality</li>
+        <li>Experiment with chunk_size: 200 vs 500 vs 1000 — notice the tradeoffs</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 39 — OpenAI SDK + Streaming:</strong> So far you've used OpenAI through LangChain. Tomorrow: the raw OpenAI Python SDK — streaming responses token by token, function calling, structured outputs, and the async client for FastAPI integration.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day37.html" class="nav-btn">← Day 37: Agents + Tools</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day39.html" class="nav-btn">Day 39: OpenAI SDK →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-38-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-38-done') === 'true';
+    localStorage.setItem('day-38-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

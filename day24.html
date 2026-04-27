@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 24 — NumPy Basics | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 24 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 24</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>NumPy Basics</h1>
+  <p>NumPy's <code>ndarray</code> is the foundation of Python's data science stack. It does in one vectorized operation what a Python loop does in 100 lines — and runs at C speed. No direct Java equivalent.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li>Why NumPy exists — vectorized ops, no loops, C speed</li>
+        <li><code>ndarray</code> vs Python <code>list</code> — the fundamental difference</li>
+        <li>Creating arrays: <code>np.array</code>, <code>np.zeros</code>, <code>np.ones</code>, <code>np.arange</code>, <code>np.linspace</code></li>
+        <li>Array shape, dtype, and reshape</li>
+        <li>Indexing and slicing — 1D and 2D arrays</li>
+        <li>Vectorized arithmetic and universal functions (ufuncs)</li>
+        <li>Broadcasting rules</li>
+        <li>Aggregations: <code>sum</code>, <code>mean</code>, <code>std</code>, <code>min</code>, <code>max</code>, <code>argmax</code></li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li>No direct equivalent. Closest: <code>double[]</code> + Apache Commons Math, or EJML for matrices</li>
+        <li>Vectorized ops → Java Streams <code>.map()</code> but running in native C — 10-100x faster</li>
+        <li><code>ndarray</code> shape → Java multi-dimensional array <code>double[][]</code></li>
+        <li><code>np.dot()</code> → matrix multiply (no clean Java stdlib equivalent)</li>
+        <li>Broadcasting → Java has no equivalent — you'd write explicit loops</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why NumPy?</h2>
+
+    <h3>Python list vs ndarray</h3>
+    <p>A Python list stores references to Python objects — each element is a full Python object with type info, reference counting, and GC overhead. A NumPy <code>ndarray</code> stores a contiguous block of typed C values in memory — like Java's primitive <code>double[]</code>. This means vectorized operations on 1 million numbers run in milliseconds, not seconds.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — array math</span>
+        <pre><code class="language-java">double[] a = {1.0, 2.0, 3.0, 4.0};
+double[] result = new double[a.length];
+for (int i = 0; i &lt; a.length; i++) {
+    result[i] = a[i] * 2 + 1;  // loop required
+}</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python — NumPy</span>
+        <pre><code class="language-python">import numpy as np
+
+a = np.array([1.0, 2.0, 3.0, 4.0])
+result = a * 2 + 1   # vectorized — no loop needed
+# array([3., 5., 7., 9.])
+
+# Performance comparison
+import time
+data = list(range(1_000_000))
+
+start = time.perf_counter()
+py_result = [x * 2 for x in data]
+print(f"Python list: {time.perf_counter() - start:.3f}s")
+
+arr = np.array(data)
+start = time.perf_counter()
+np_result = arr * 2
+print(f"NumPy array: {time.perf_counter() - start:.3f}s")
+# NumPy is typically 10-50x faster</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Creating Arrays</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import numpy as np
+
+# From Python list
+a = np.array([1, 2, 3, 4, 5])
+b = np.array([[1, 2, 3], [4, 5, 6]])   # 2D array (matrix)
+
+# Zeros and ones
+z = np.zeros(5)                   # [0. 0. 0. 0. 0.]
+o = np.ones((3, 4))               # 3x4 matrix of 1.0
+e = np.eye(3)                     # 3x3 identity matrix
+full = np.full((2, 3), 7)         # [[7,7,7],[7,7,7]]
+
+# Sequences
+r = np.arange(0, 10, 2)          # [0 2 4 6 8] — like range()
+l = np.linspace(0, 1, 5)         # [0.  0.25 0.5  0.75 1.0] — 5 evenly spaced
+
+# Random arrays
+rng = np.random.default_rng(seed=42)   # reproducible
+rand = rng.random((3, 4))              # 3x4 uniform [0, 1)
+norm = rng.normal(loc=0, scale=1, size=(100,))  # standard normal
+
+# dtype — the element type
+print(np.array([1, 2, 3]).dtype)         # int64
+print(np.array([1.0, 2.0]).dtype)        # float64
+print(np.array([True, False]).dtype)     # bool
+
+# Explicitly specify dtype
+i32 = np.array([1, 2, 3], dtype=np.int32)
+f32 = np.zeros(5, dtype=np.float32)
+print(f32.dtype)   # float32 (saves memory vs float64)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Shape, Reshape, and Inspection</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import numpy as np
+
+a = np.array([[1, 2, 3], [4, 5, 6]])
+
+print(a.shape)    # (2, 3) — 2 rows, 3 columns
+print(a.ndim)     # 2 — number of dimensions
+print(a.size)     # 6 — total elements
+print(a.dtype)    # int64
+
+# Reshape — must keep total element count the same
+b = a.reshape(3, 2)      # [[1,2],[3,4],[5,6]]
+c = a.reshape(6)          # [1,2,3,4,5,6] — flatten to 1D
+d = a.reshape(6, 1)       # column vector: [[1],[2],[3],[4],[5],[6]]
+e = a.flatten()           # always returns a copy
+
+# -1 means "figure it out"
+f = a.reshape(-1)         # same as flatten: [1,2,3,4,5,6]
+g = a.reshape(-1, 2)      # 3x2 — NumPy computes 3
+
+# Transpose
+print(a.T)                # [[1,4],[2,5],[3,6]]
+print(a.T.shape)          # (3, 2)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Indexing and Slicing</h2>
+
+    <h3>1D arrays — same as Python lists</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import numpy as np
+
+a = np.array([10, 20, 30, 40, 50])
+
+print(a[0])       # 10
+print(a[-1])      # 50
+print(a[1:4])     # [20 30 40]
+print(a[::2])     # [10 30 50]
+print(a[::-1])    # [50 40 30 20 10]</code></pre>
+    </div>
+
+    <h3>2D arrays — row, column indexing</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import numpy as np
+
+m = np.array([[1, 2, 3],
+              [4, 5, 6],
+              [7, 8, 9]])
+
+print(m[0, 0])    # 1 — row 0, col 0
+print(m[1, 2])    # 6 — row 1, col 2
+print(m[0])       # [1 2 3] — entire first row
+print(m[:, 1])    # [2 5 8] — entire second column
+print(m[1:, 1:])  # [[5,6],[8,9]] — submatrix
+
+# Boolean indexing — select elements matching a condition
+data = np.array([3, 7, 1, 9, 2, 8, 4])
+mask = data > 5
+print(mask)       # [False  True False  True False  True False]
+print(data[mask]) # [7 9 8] — only elements > 5
+
+# Fancy indexing — select by index array
+idx = np.array([0, 2, 4])
+print(data[idx])  # [3 1 2]
+
+# Modifying via indexing
+m[0, :] = 0       # zero out first row
+m[:, 2] = -1      # set last column to -1</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Vectorized Operations and Broadcasting</h2>
+
+    <h3>Arithmetic — element-wise by default</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import numpy as np
+
+a = np.array([1, 2, 3, 4])
+b = np.array([10, 20, 30, 40])
+
+# All operations are element-wise
+print(a + b)     # [11 22 33 44]
+print(a * b)     # [10 40 90 160]
+print(a ** 2)    # [1 4 9 16]
+print(b / a)     # [10. 10. 10. 10.]
+print(a > 2)     # [False False True True]
+
+# Universal functions (ufuncs) — element-wise math
+print(np.sqrt(a))        # [1. 1.414 1.732 2.   ]
+print(np.exp(a))         # [2.718 7.389 20.086 54.598]
+print(np.log(b))         # [2.302 2.995 3.401 3.688]
+print(np.abs(np.array([-1, 2, -3])))  # [1 2 3]</code></pre>
+    </div>
+
+    <h3>Broadcasting — operating on different shapes</h3>
+    <p>Broadcasting is NumPy's most powerful and initially confusing feature. When you operate on arrays of different shapes, NumPy automatically "broadcasts" the smaller array to match the larger one — without copying data.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import numpy as np
+
+# Scalar broadcast: scalar is applied to every element
+a = np.array([1, 2, 3, 4])
+print(a + 10)     # [11 12 13 14] — 10 broadcasts over all elements
+print(a * 3)      # [ 3  6  9 12]
+
+# 1D over 2D — adds row vector to each row
+m = np.array([[1, 2, 3],
+              [4, 5, 6]])
+row = np.array([10, 20, 30])   # shape (3,)
+print(m + row)
+# [[11 22 33]
+#  [14 25 36]]
+
+# Column vector over 2D — adds to each column
+col = np.array([[100],
+                [200]])         # shape (2, 1)
+print(m + col)
+# [[101 102 103]
+#  [204 205 206]]
+
+# Practical: normalize each row to [0,1]
+data = np.array([[10., 20., 30.],
+                 [1., 5., 9.]])
+row_min = data.min(axis=1, keepdims=True)   # shape (2,1)
+row_max = data.max(axis=1, keepdims=True)   # shape (2,1)
+normalized = (data - row_min) / (row_max - row_min)
+print(normalized)
+# [[0.  0.5 1. ]
+#  [0.  0.5 1. ]]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Aggregations</h2>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import numpy as np
+
+data = np.array([[4, 2, 7],
+                 [1, 8, 3],
+                 [5, 6, 9]])
+
+# Overall aggregations
+print(data.sum())     # 45
+print(data.mean())    # 5.0
+print(data.std())     # 2.449
+print(data.min())     # 1
+print(data.max())     # 9
+
+# Along an axis
+# axis=0: reduce across rows (result has one value per column)
+print(data.sum(axis=0))    # [10 16 19] — column sums
+print(data.mean(axis=0))   # [3.33 5.33 6.33] — column means
+
+# axis=1: reduce across columns (result has one value per row)
+print(data.sum(axis=1))    # [13 12 20] — row sums
+print(data.max(axis=1))    # [7 8 9]    — row maxima
+
+# Index of min/max
+print(data.argmax())       # 8 — flat index
+print(data.argmax(axis=1)) # [2 1 2] — column index of max in each row
+
+# Cumulative operations
+a = np.array([1, 2, 3, 4, 5])
+print(np.cumsum(a))        # [ 1  3  6 10 15]
+print(np.cumprod(a))       # [  1   2   6  24 120]
+
+# Sorting
+b = np.array([3, 1, 4, 1, 5, 9, 2])
+print(np.sort(b))          # [1 1 2 3 4 5 9]
+print(np.argsort(b))       # indices that would sort b</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Create from list</div>
+        <code>np.array([1, 2, 3])</code>
+        <p>Infers dtype. Use <code>dtype=np.float32</code> to control memory usage.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Fill arrays</div>
+        <code>np.zeros(n) / np.ones(n) / np.full(shape, val)</code>
+        <p>Also: <code>np.eye(n)</code> for identity, <code>np.arange(start,stop,step)</code> for sequences.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Shape inspection</div>
+        <code>a.shape / a.ndim / a.size / a.dtype</code>
+        <p><code>shape</code> is a tuple; <code>ndim</code> is its length; <code>size</code> is the product.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Reshape</div>
+        <code>a.reshape(3, 4) / a.reshape(-1)</code>
+        <p>Use <code>-1</code> to let NumPy infer one dimension. Returns a view when possible.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">2D indexing</div>
+        <code>m[row, col] / m[1:, :2] / m[:, 0]</code>
+        <p>Comma-separated indices. Slice as usual — 0-based, exclusive end.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Boolean mask</div>
+        <code>a[a &gt; 5]</code>
+        <p>Returns elements where condition is True. Modify in-place: <code>a[a &lt; 0] = 0</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Axis aggregation</div>
+        <code>m.sum(axis=0) / m.mean(axis=1)</code>
+        <p>axis=0 reduces rows (→ column result); axis=1 reduces columns (→ row result).</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Math functions</div>
+        <code>np.sqrt(a) / np.exp(a) / np.log(a) / np.abs(a)</code>
+        <p>All element-wise. Much faster than <code>[math.sqrt(x) for x in a]</code>.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>NumPy's <code>ndarray</code> is a contiguous block of typed C values — not Python objects. This is why vectorized operations are 10-100x faster than equivalent Python loops. Think of it as Java's <code>double[]</code> with built-in math.</li>
+      <li>Vectorized operations eliminate loops. Instead of <code>for x in data: result.append(x * 2)</code>, write <code>data * 2</code>. Any operation you'd write as a loop over an array is almost certainly available as a vectorized form.</li>
+      <li>The <code>axis</code> parameter is confusing at first: <code>axis=0</code> reduces across rows (result is one value per column), <code>axis=1</code> reduces across columns (result is one value per row). Think of the axis number as "which dimension disappears".</li>
+      <li>Broadcasting lets you operate on arrays of different shapes without copying. A scalar broadcasts over all elements. A 1D array broadcasts over each row of a 2D array. NumPy aligns shapes right-to-left and expands dimensions of size 1.</li>
+      <li>NumPy is the foundation — Pandas is built on it, scikit-learn uses it internally, and any array passed between libraries is usually a NumPy array. Understanding it well makes every data science library easier to use.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 25</h4>
+      <ul>
+        <li>Create a 5x5 matrix with random integers 1–100 and find the row index and column index of the maximum value</li>
+        <li>Normalize a 1D array of prices to the range [0, 1] without a loop</li>
+        <li>Given a 2D array of student scores (rows=students, cols=subjects), compute each student's average and rank them</li>
+        <li>Use boolean indexing to replace all negative values in an array with 0 (clipping to zero)</li>
+        <li>Compute the dot product of two vectors with <code>np.dot()</code> and matrix multiplication with <code>@</code> (the matmul operator)</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 25: Pandas Basics</strong><br>
+      NumPy is for arrays. Pandas is for labeled tabular data — think of it as a spreadsheet or SQL result set you can manipulate with code. <code>DataFrame</code> and <code>Series</code> are the two types you'll use constantly for data wrangling.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day23.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day25.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 24;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

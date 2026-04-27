@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 18 — datetime + json | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 2 — Core Libraries: blue badge */
+    .phase-badge { background: #1a1a2e; color: #7090ff; border: 1px solid #2a2a4a; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 18 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 18</span>
+    <span class="phase-badge">Phase 2 — Core Libraries</span>
+  </div>
+  <h1>datetime + json</h1>
+  <p>Two modules you'll use in virtually every backend project: <code>datetime</code> for working with dates and times correctly (including timezones), and <code>json</code> for serializing Python objects to and from JSON.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What you'll cover</h3>
+      <ul class="plan-items">
+        <li><code>datetime</code>, <code>date</code>, <code>time</code>, <code>timedelta</code> — the core types</li>
+        <li>Timezone-aware vs naive datetimes — and why naive is dangerous</li>
+        <li>Formatting with <code>strftime</code> and parsing with <code>strptime</code></li>
+        <li><code>json.loads</code> / <code>json.dumps</code> — string serialization</li>
+        <li><code>json.load</code> / <code>json.dump</code> — file-based serialization</li>
+        <li>Custom JSON encoders for non-serializable types (datetime, Decimal, dataclasses)</li>
+      </ul>
+    </div>
+    <div class="java-parallels">
+      <h4>Java parallels</h4>
+      <ul>
+        <li><code>datetime.datetime</code> → <code>LocalDateTime</code> / <code>ZonedDateTime</code></li>
+        <li><code>datetime.date</code> → <code>LocalDate</code></li>
+        <li><code>datetime.timedelta</code> → <code>Duration</code> / <code>Period</code></li>
+        <li><code>timezone.utc</code> → <code>ZoneOffset.UTC</code></li>
+        <li><code>strftime</code> / <code>strptime</code> → <code>DateTimeFormatter.format()</code> / <code>.parse()</code></li>
+        <li><code>json.dumps</code> → <code>ObjectMapper.writeValueAsString()</code></li>
+        <li><code>json.loads</code> → <code>ObjectMapper.readValue()</code></li>
+        <li>Custom encoder → <code>@JsonSerializer</code> / <code>JsonDeserializer</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>datetime</h2>
+
+    <h3>The core types</h3>
+    <p>Python's <code>datetime</code> module contains four main types: <code>date</code> (year/month/day), <code>time</code> (hour/minute/second/microsecond), <code>datetime</code> (date + time), and <code>timedelta</code> (duration). You'll mostly use <code>datetime</code> and <code>timedelta</code>.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">LocalDate today = LocalDate.now();
+LocalDateTime now = LocalDateTime.now();
+LocalDateTime specific = LocalDateTime.of(2024, 3, 15, 10, 30, 0);
+Duration duration = Duration.ofDays(7);
+LocalDateTime future = now.plus(duration);</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from datetime import datetime, date, time, timedelta
+
+today = date.today()                         # 2024-03-15
+now   = datetime.now()                       # 2024-03-15 10:30:45.123456
+specific = datetime(2024, 3, 15, 10, 30, 0)  # year, month, day, h, m, s
+
+# Arithmetic with timedelta
+one_week  = timedelta(days=7)
+next_week = now + one_week
+yesterday = today - timedelta(days=1)
+diff      = datetime(2024, 12, 31) - datetime.now()
+print(f"{diff.days} days until year end")
+
+# Extracting components
+print(now.year, now.month, now.day)           # 2024 3 15
+print(now.hour, now.minute, now.second)       # 10 30 45
+print(now.weekday())   # 0=Monday … 6=Sunday
+print(now.isoformat()) # '2024-03-15T10:30:45.123456'</code></pre>
+      </div>
+    </div>
+
+    <h3>Timezone-aware datetimes</h3>
+    <p>A <em>naive</em> datetime has no timezone info — like a timestamp without a label. A <em>aware</em> datetime knows its timezone. Always use aware datetimes in backend systems that serve multiple timezones. Naive datetimes are a silent source of bugs.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from datetime import datetime, timezone, timedelta
+
+# UTC — always use for storage and APIs
+utc_now = datetime.now(tz=timezone.utc)
+print(utc_now)              # 2024-03-15 10:30:45.123456+00:00
+print(utc_now.tzinfo)       # UTC
+
+# Create a fixed-offset timezone (e.g. IST = UTC+5:30)
+IST = timezone(timedelta(hours=5, minutes=30))
+ist_now = datetime.now(tz=IST)
+print(ist_now)              # 2024-03-15 16:00:45.123456+05:30
+
+# Convert between timezones
+ist_from_utc = utc_now.astimezone(IST)
+print(ist_from_utc)         # same moment, different representation
+
+# Never mix naive and aware datetimes — raises TypeError
+naive = datetime.now()
+# naive + utc_now    # TypeError!
+
+# Python 3.11+ shortcut
+utc_now = datetime.now(timezone.utc)   # preferred
+
+# For production: use the 'zoneinfo' module (Python 3.9+)
+from zoneinfo import ZoneInfo
+ny = datetime.now(tz=ZoneInfo("America/New_York"))
+london = datetime.now(tz=ZoneInfo("Europe/London"))
+print(ny.isoformat())   # handles DST automatically</code></pre>
+    </div>
+
+    <div class="callout">
+      <strong>Rule of thumb:</strong> Store all datetimes in UTC. Convert to local time only for display. This is the same convention as Java's <code>ZonedDateTime</code> / Spring Boot's default UTC storage.
+    </div>
+
+    <h3>Formatting and parsing</h3>
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java</span>
+        <pre><code class="language-java">DateTimeFormatter fmt = DateTimeFormatter
+    .ofPattern("yyyy-MM-dd HH:mm:ss");
+
+String formatted = LocalDateTime.now().format(fmt);
+LocalDateTime parsed = LocalDateTime.parse("2024-03-15 10:30:00", fmt);</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">from datetime import datetime
+
+now = datetime.now()
+
+# strftime — format datetime to string
+print(now.strftime("%Y-%m-%d"))          # 2024-03-15
+print(now.strftime("%d/%m/%Y %H:%M"))    # 15/03/2024 10:30
+print(now.strftime("%B %d, %Y"))         # March 15, 2024
+print(now.strftime("%A"))                # Friday
+
+# strptime — parse string to datetime
+dt = datetime.strptime("2024-03-15 10:30:00", "%Y-%m-%d %H:%M:%S")
+dt = datetime.strptime("March 15, 2024", "%B %d, %Y")
+
+# ISO format — use for APIs and JSON (no format string needed)
+iso = now.isoformat()                    # '2024-03-15T10:30:45.123456'
+back = datetime.fromisoformat(iso)       # round-trips perfectly
+
+# Common format codes
+# %Y=4-digit year, %m=month, %d=day
+# %H=24h hour, %M=minute, %S=second
+# %A=weekday name, %B=month name, %f=microseconds</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>json</h2>
+
+    <h3>loads / dumps — string serialization</h3>
+    <p><code>json.dumps</code> converts a Python object to a JSON string. <code>json.loads</code> parses a JSON string back to Python. The type mapping is: <code>dict</code>↔object, <code>list</code>↔array, <code>str</code>↔string, <code>int</code>/<code>float</code>↔number, <code>True</code>/<code>False</code>↔true/false, <code>None</code>↔null.</p>
+
+    <div class="side-by-side">
+      <div class="java-block">
+        <span class="block-label">Java — Jackson</span>
+        <pre><code class="language-java">ObjectMapper mapper = new ObjectMapper();
+
+// Serialize
+String json = mapper.writeValueAsString(myObject);
+
+// Deserialize
+MyClass obj = mapper.readValue(json, MyClass.class);
+Map&lt;?,?&gt; map = mapper.readValue(json, Map.class);</code></pre>
+      </div>
+      <div class="python-block">
+        <span class="block-label">Python</span>
+        <pre><code class="language-python">import json
+
+# Python → JSON string
+data = {
+    "name": "Alice",
+    "age": 30,
+    "active": True,
+    "scores": [95, 87, 92],
+    "address": None,
+}
+
+json_str = json.dumps(data)
+print(json_str)
+# {"name": "Alice", "age": 30, "active": true, ...}
+
+# Pretty-print for readability
+pretty = json.dumps(data, indent=2, sort_keys=True)
+print(pretty)
+
+# JSON string → Python
+parsed = json.loads(json_str)
+print(type(parsed))        # dict
+print(parsed["name"])      # Alice
+print(type(parsed["active"]))  # bool</code></pre>
+      </div>
+    </div>
+
+    <h3>load / dump — file-based serialization</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import json
+from pathlib import Path
+
+data = {"users": [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]}
+
+# Write to file
+with open("users.json", "w") as f:
+    json.dump(data, f, indent=2)
+
+# Or with pathlib (simpler for small files)
+Path("users.json").write_text(json.dumps(data, indent=2))
+
+# Read from file
+with open("users.json") as f:
+    loaded = json.load(f)
+
+# Or with pathlib
+loaded = json.loads(Path("users.json").read_text())</code></pre>
+    </div>
+
+    <h3>Custom encoder — non-serializable types</h3>
+    <p>By default, <code>json.dumps</code> raises <code>TypeError</code> for types it doesn't know: <code>datetime</code>, <code>Decimal</code>, <code>set</code>, custom classes. You handle this with a custom encoder.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import json
+from datetime import datetime, date
+from decimal import Decimal
+from dataclasses import dataclass, asdict
+
+
+class AppEncoder(json.JSONEncoder):
+    """Custom JSON encoder for types not supported by default."""
+
+    def default(self, obj):
+        if isinstance(obj, datetime):
+            return obj.isoformat()          # → "2024-03-15T10:30:00"
+        if isinstance(obj, date):
+            return obj.isoformat()          # → "2024-03-15"
+        if isinstance(obj, Decimal):
+            return float(obj)               # → 9.99
+        if isinstance(obj, set):
+            return sorted(obj)              # → list (sorted for determinism)
+        # For dataclasses — use asdict()
+        try:
+            return asdict(obj)
+        except TypeError:
+            pass
+        return super().default(obj)         # raises TypeError for unknown types
+
+
+@dataclass
+class Order:
+    id: int
+    amount: Decimal
+    created_at: datetime
+    tags: set[str]
+
+
+order = Order(
+    id=42,
+    amount=Decimal("99.99"),
+    created_at=datetime(2024, 3, 15, 10, 30),
+    tags={"urgent", "vip"},
+)
+
+# Without custom encoder: TypeError
+# json.dumps(order)  ← TypeError
+
+# With custom encoder
+json_str = json.dumps(order, cls=AppEncoder, indent=2)
+print(json_str)
+# {
+#   "id": 42,
+#   "amount": 99.99,
+#   "created_at": "2024-03-15T10:30:00",
+#   "tags": ["urgent", "vip"]
+# }
+
+# Alternative: use default= parameter for simple cases
+json.dumps({"dt": datetime.now()}, default=str)  # converts anything to str</code></pre>
+    </div>
+
+    <h3>Custom decoder — parsing back to types</h3>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import json
+from datetime import datetime
+
+def decode_datetime(dct: dict) -> dict:
+    """Convert ISO datetime strings back to datetime objects during parse."""
+    for key, value in dct.items():
+        if isinstance(value, str):
+            try:
+                dct[key] = datetime.fromisoformat(value)
+            except ValueError:
+                pass   # not a datetime — leave as string
+    return dct
+
+
+data = '{"name": "Alice", "created_at": "2024-03-15T10:30:00"}'
+parsed = json.loads(data, object_hook=decode_datetime)
+print(type(parsed["created_at"]))  # datetime — not string!
+print(parsed["created_at"].year)   # 2024</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Current UTC time</div>
+        <code>datetime.now(timezone.utc)</code>
+        <p>Always use UTC for storage. Import <code>timezone</code> from <code>datetime</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">timedelta arithmetic</div>
+        <code>datetime.now() + timedelta(days=7, hours=3)</code>
+        <p>Add/subtract durations from datetimes. Supports days, seconds, microseconds, etc.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Format to string</div>
+        <code>dt.strftime("%Y-%m-%d %H:%M:%S")</code>
+        <p>Common codes: <code>%Y</code> year, <code>%m</code> month, <code>%d</code> day, <code>%H</code> hour, <code>%M</code> min</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Parse from string</div>
+        <code>datetime.strptime("2024-03-15", "%Y-%m-%d")</code>
+        <p>Format must match exactly. For ISO strings use <code>fromisoformat()</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">ISO format round-trip</div>
+        <code>dt.isoformat() / datetime.fromisoformat(s)</code>
+        <p>Best choice for JSON APIs and databases. Preserves timezone info.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">JSON encode</div>
+        <code>json.dumps(data, indent=2)</code>
+        <p>Python → JSON string. Use <code>json.dump(data, file)</code> for file output.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">JSON decode</div>
+        <code>json.loads(string) / json.load(file)</code>
+        <p>JSON string/file → Python dict/list/etc.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Custom encoder</div>
+        <code>json.dumps(obj, cls=MyEncoder)</code>
+        <p>Subclass <code>json.JSONEncoder</code>, override <code>default(self, obj)</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Quick non-serializable fix</div>
+        <code>json.dumps(obj, default=str)</code>
+        <p>Converts anything unknown to its string representation. Good for logging, not APIs.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Always use timezone-aware datetimes in backend code. Naive datetimes (no timezone) silently cause bugs when servers change timezone or data crosses boundaries. <code>datetime.now(timezone.utc)</code> is the safe default.</li>
+      <li><code>datetime.isoformat()</code> and <code>datetime.fromisoformat()</code> are your API serialization format — they round-trip perfectly and are universally understood. Use <code>strftime</code>/<code>strptime</code> only when dealing with legacy or user-facing format requirements.</li>
+      <li><code>json.dumps</code>/<code>json.loads</code> handle basic Python types automatically. For <code>datetime</code>, <code>Decimal</code>, dataclasses, or custom objects, write a <code>JSONEncoder</code> subclass and pass it as <code>cls=</code>.</li>
+      <li><code>json.dumps(obj, default=str)</code> is a quick workaround for logging and debugging — it converts anything non-serializable to its string repr. Don't use it in APIs where type fidelity matters on the receiving end.</li>
+      <li>Store times in UTC, compute in UTC, convert to local only at the presentation layer. This is the same rule as in Java's <code>ZonedDateTime</code> ecosystem — it prevents a whole class of timezone-related bugs.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Practice before Day 19</h4>
+      <ul>
+        <li>Write a function <code>days_until(target: date) -> int</code> that returns the number of days until a future date, using <code>timedelta</code></li>
+        <li>Parse a list of ISO timestamp strings from a JSON file, convert them all to UTC, and find the most recent one</li>
+        <li>Build a custom JSON encoder that handles <code>datetime</code>, <code>Decimal</code>, <code>set</code>, and any <code>@dataclass</code> — test it with a nested data structure</li>
+        <li>Write a <code>log_entry(level, message)</code> function that outputs JSON to stdout with a UTC timestamp — this is the basis of structured logging</li>
+        <li>Parse the GitHub API's date format (<code>"2024-03-15T10:30:00Z"</code>) using <code>fromisoformat</code> and convert it to your local timezone using <code>zoneinfo</code></li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Tomorrow — Day 19: requests + httpx</strong><br>
+      You'll learn to make HTTP requests in Python — GET, POST, headers, auth, error handling. Then meet <code>httpx</code>, the modern async-capable alternative with the same API. This is the foundation for everything from REST API clients to web scrapers.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day17.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day19.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 18;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>

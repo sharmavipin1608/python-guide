@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 55 — Review + Weak Spots | Python for Java Developers</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    .phase-badge { background: #1a0d2e; color: #b070ff; border: 1px solid #2d1a4a; }
+
+    .checklist { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .checklist li { position: relative; padding-left: 28px; font-size: 0.95rem; color: #c0c0c0; line-height: 1.6; }
+    .checklist li::before { content: '□'; color: #f0e040; font-size: 1rem; position: absolute; left: 0; top: 0.1em; }
+
+    .antipattern-box { background: #1a0d0d; border: 1px solid #3d1a1a; border-left: 3px solid #e04040; border-radius: 8px; padding: 16px 20px; margin: 16px 0; }
+    .antipattern-box strong { color: #e04040; }
+
+    .resource-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; }
+    .resource-card { background: #141414; border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; }
+    .resource-card h4 { font-size: 0.85rem; font-weight: 700; color: #b070ff; margin-bottom: 8px; }
+    .resource-card p { font-size: 0.85rem; color: #888; margin: 0; }
+    .resource-card .tag { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; color: #555; margin-top: 6px; display: block; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 55 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Day 55</span>
+    <span class="phase-badge">Phase 4 — Advanced</span>
+  </div>
+  <h1>Review + Weak Spots</h1>
+  <p>Day 55 of 56. Before the capstone, use today to find gaps, check your code against the Pythonic style guide, read a real Python codebase, and decide what direction to go next.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Plan for the Day</h2>
+    <div class="plan-box">
+      <h3>What You'll Cover</h3>
+      <ul class="plan-items">
+        <li>Pythonic code checklist — are you writing Python or Java-in-Python? <span style="color:#555">~20 min</span></li>
+        <li>Common Python anti-patterns to avoid <span style="color:#555">~20 min</span></li>
+        <li>Read a real Python codebase on GitHub <span style="color:#555">~30 min</span></li>
+        <li>Identify your weak spots from the 54 days <span style="color:#555">~15 min</span></li>
+        <li>What to learn next based on your direction <span style="color:#555">~10 min</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>1. Pythonic Code Checklist</h2>
+    <p>Read through this list honestly. Check each item against code you've written over the past 54 days. If something still feels foreign, spend 15 minutes re-reading the relevant day.</p>
+
+    <h3>Variables + Data Structures</h3>
+    <ul class="checklist">
+      <li>I use <code>_</code> for throwaway variables: <code>for _, value in pairs:</code></li>
+      <li>I unpack tuples directly: <code>x, y = point</code> instead of <code>point[0], point[1]</code></li>
+      <li>I use <code>dict.get(key, default)</code> instead of checking <code>if key in dict</code> then accessing</li>
+      <li>I reach for <code>collections.defaultdict</code> and <code>Counter</code> instead of manual counting dicts</li>
+      <li>I use <code>set</code> for membership tests and deduplication, not <code>list</code></li>
+      <li>I use <code>dataclasses</code> or <code>NamedTuple</code> instead of bare dicts for structured data</li>
+    </ul>
+
+    <h3>Loops + Comprehensions</h3>
+    <ul class="checklist">
+      <li>I iterate directly over collections, not over <code>range(len(...))</code></li>
+      <li>I use <code>enumerate()</code> when I need both index and value</li>
+      <li>I use <code>zip()</code> to iterate over multiple sequences in parallel</li>
+      <li>I write list comprehensions for simple transformations and filters</li>
+      <li>I use generator expressions <code>(x for x in ...)</code> when I only need to iterate once</li>
+      <li>I don't put side effects inside comprehensions</li>
+    </ul>
+
+    <h3>Functions + OOP</h3>
+    <ul class="checklist">
+      <li>My functions do one thing and have descriptive names (snake_case)</li>
+      <li>I use <code>*args</code> and <code>**kwargs</code> where appropriate</li>
+      <li>I use <code>@property</code> instead of Java-style <code>get_x()</code> / <code>set_x()</code> methods</li>
+      <li>My classes use <code>__str__</code> for human-readable output, <code>__repr__</code> for debugging</li>
+      <li>I write <code>@dataclass</code> instead of classes that only hold data with manual <code>__init__</code></li>
+      <li>I use <code>Protocol</code> for structural typing instead of requiring inheritance</li>
+    </ul>
+
+    <h3>Errors + Context</h3>
+    <ul class="checklist">
+      <li>I catch specific exceptions, not bare <code>except:</code></li>
+      <li>I use <code>with</code> statements for resources (files, DB connections, locks)</li>
+      <li>I raise meaningful custom exceptions with informative messages</li>
+      <li>I use <code>logging</code>, not <code>print()</code>, for application output</li>
+    </ul>
+
+    <h3>Type Hints + Style</h3>
+    <ul class="checklist">
+      <li>I add type hints to all public function signatures</li>
+      <li>I use <code>X | None</code> (Python 3.10+) instead of <code>Optional[X]</code></li>
+      <li>I use <code>str | None = None</code> for optional parameters</li>
+      <li>My files pass <code>ruff check</code> with no errors</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>2. Common Anti-Patterns</h2>
+    <p>These are the patterns that scream "Java developer learning Python". If you spot any in your code, refactor them now — before the capstone.</p>
+
+    <div class="antipattern-box">
+      <strong>Anti-pattern 1: Java-style getters and setters</strong>
+      <pre style="margin-top:10px;background:#0d0d0d;padding:14px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:#c0c0c0;overflow-x:auto;"><code># ❌ Java-in-Python
+class Task:
+    def get_title(self): return self._title
+    def set_title(self, value): self._title = value
+
+# ✅ Pythonic
+class Task:
+    @property
+    def title(self) -> str: return self._title
+    @title.setter
+    def title(self, value: str): self._title = value
+    # Or just: self.title = value  if no validation needed</code></pre>
+    </div>
+
+    <div class="antipattern-box">
+      <strong>Anti-pattern 2: Indexing when you should iterate</strong>
+      <pre style="margin-top:10px;background:#0d0d0d;padding:14px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:#c0c0c0;overflow-x:auto;"><code># ❌ Java-in-Python
+for i in range(len(tasks)):
+    print(tasks[i].title)
+
+# ✅ Pythonic
+for task in tasks:
+    print(task.title)
+
+# ✅ When you need the index
+for i, task in enumerate(tasks):
+    print(f"{i}: {task.title}")</code></pre>
+    </div>
+
+    <div class="antipattern-box">
+      <strong>Anti-pattern 3: Type checking instead of duck typing</strong>
+      <pre style="margin-top:10px;background:#0d0d0d;padding:14px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:#c0c0c0;overflow-x:auto;"><code># ❌ Java-in-Python
+def process(obj):
+    if isinstance(obj, list):
+        for item in obj:
+            do_thing(item)
+    elif isinstance(obj, tuple):
+        for item in obj:
+            do_thing(item)
+
+# ✅ Pythonic — if it's iterable, iterate it
+def process(obj):
+    for item in obj:   # works for list, tuple, set, generator, etc.
+        do_thing(item)</code></pre>
+    </div>
+
+    <div class="antipattern-box">
+      <strong>Anti-pattern 4: Building strings with concatenation</strong>
+      <pre style="margin-top:10px;background:#0d0d0d;padding:14px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:#c0c0c0;overflow-x:auto;"><code># ❌ Java-in-Python — O(n²) memory allocations
+result = ""
+for item in items:
+    result += str(item) + ", "
+
+# ✅ Pythonic
+result = ", ".join(str(item) for item in items)
+
+# ✅ For complex formatting, use f-strings
+name, score = "Vipin", 95
+msg = f"User {name} scored {score}/100"</code></pre>
+    </div>
+
+    <div class="antipattern-box">
+      <strong>Anti-pattern 5: Returning None implicitly and ignoring it</strong>
+      <pre style="margin-top:10px;background:#0d0d0d;padding:14px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:#c0c0c0;overflow-x:auto;"><code># ❌ Java-in-Python — caller has no idea this can return None
+def find_user(user_id: int):
+    for u in users:
+        if u.id == user_id:
+            return u
+    # implicit return None — undocumented!
+
+# ✅ Pythonic — explicit return type, caller knows to handle None
+def find_user(user_id: int) -> User | None:
+    return next((u for u in users if u.id == user_id), None)</code></pre>
+    </div>
+
+    <div class="antipattern-box">
+      <strong>Anti-pattern 6: Mutable default arguments</strong>
+      <pre style="margin-top:10px;background:#0d0d0d;padding:14px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:#c0c0c0;overflow-x:auto;"><code># ❌ Bug — the same list is shared across ALL calls
+def add_item(item, items=[]):
+    items.append(item)
+    return items
+
+print(add_item("a"))  # ['a']
+print(add_item("b"))  # ['a', 'b']  ← BUG: list persists between calls
+
+# ✅ Pythonic
+def add_item(item: str, items: list[str] | None = None) -> list[str]:
+    if items is None:
+        items = []
+    items.append(item)
+    return items</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. Read a Real Python Codebase</h2>
+    <p>The best way to internalize idiomatic Python is to read code written by experienced Python developers. Pick one of these well-maintained open-source projects and spend 20–30 minutes exploring:</p>
+
+    <div class="resource-grid">
+      <div class="resource-card">
+        <h4>FastAPI</h4>
+        <p>The framework you've been using. Read the routing, dependency injection, and middleware source. Excellent async Python and type hint usage.</p>
+        <span class="tag">github.com/fastapi/fastapi</span>
+      </div>
+      <div class="resource-card">
+        <h4>httpx</h4>
+        <p>A modern HTTP client. Clean API design, excellent use of context managers, sync + async dual support in one codebase.</p>
+        <span class="tag">github.com/encode/httpx</span>
+      </div>
+      <div class="resource-card">
+        <h4>Pydantic</h4>
+        <p>If you want to see metaclasses, descriptors, and Python's data model used in anger — the Pydantic v2 source is fascinating.</p>
+        <span class="tag">github.com/pydantic/pydantic</span>
+      </div>
+      <div class="resource-card">
+        <h4>rich</h4>
+        <p>Beautiful terminal output library. Great example of a well-structured Python library with clean public API and extensive use of dataclasses and Protocols.</p>
+        <span class="tag">github.com/Textualize/rich</span>
+      </div>
+      <div class="resource-card">
+        <h4>attrs</h4>
+        <p>The predecessor to dataclasses. Compact, readable source that shows advanced Python class manipulation.</p>
+        <span class="tag">github.com/python-attrs/attrs</span>
+      </div>
+      <div class="resource-card">
+        <h4>click</h4>
+        <p>The CLI framework from Day 47. Well-documented source, excellent decorator-heavy design.</p>
+        <span class="tag">github.com/pallets/click</span>
+      </div>
+    </div>
+
+    <div class="callout-teal">
+      <strong>What to look for when reading:</strong> How they structure modules. How they handle errors. Where they use type hints. What design patterns they use and which Java patterns they've replaced with simpler Python idioms. Notice what you understand immediately vs. what still looks unfamiliar.
+    </div>
+  </section>
+
+  <section>
+    <h2>4. Know Your Weak Spots</h2>
+    <p>Go back through the 54 days and be honest about which topics you feel least confident about. Here are the most commonly reported weak spots from Java developers learning Python:</p>
+
+    <div class="decision-table">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead>
+          <tr><th>Topic</th><th>Day</th><th>Quick review</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Generators / yield</td><td>Day 10</td><td>Write a generator that yields Fibonacci numbers</td></tr>
+          <tr><td>Decorators</td><td>Day 11</td><td>Write a decorator with arguments from scratch</td></tr>
+          <tr><td>asyncio gather vs create_task</td><td>Days 22–23</td><td>Write a producer/consumer with asyncio.Queue</td></tr>
+          <tr><td>SQLAlchemy relationships</td><td>Day 31</td><td>Add a many-to-many relationship to the task model</td></tr>
+          <tr><td>LCEL chains</td><td>Day 36</td><td>Build a chain with a custom output parser</td></tr>
+          <tr><td>ChromaDB RAG pipeline</td><td>Day 38</td><td>Index 5 docs and verify retrieval accuracy</td></tr>
+          <tr><td>ABC vs Protocol</td><td>Day 43</td><td>Implement the same contract with both and compare</td></tr>
+          <tr><td>GIL / concurrency choice</td><td>Day 45</td><td>Benchmark threading vs multiprocessing on a CPU task</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. What to Learn Next</h2>
+    <p>You've covered 54 days of Python. Where you go next depends on which direction you're heading.</p>
+
+    <h3>Backend Engineering</h3>
+    <ul class="checklist">
+      <li>Alembic migrations deep dive (auto-generate, squash, data migrations)</li>
+      <li>FastAPI WebSockets + real-time features</li>
+      <li>Redis caching patterns in FastAPI</li>
+      <li>PostgreSQL-specific features with SQLAlchemy (JSONB, full-text search, CTEs)</li>
+      <li>Async SQLAlchemy for fully non-blocking I/O</li>
+    </ul>
+
+    <h3>AI / ML Engineering</h3>
+    <ul class="checklist">
+      <li>LangGraph — stateful multi-agent workflows</li>
+      <li>Fine-tuning with HuggingFace Transformers</li>
+      <li>PyTorch fundamentals — tensors, autograd, training loops</li>
+      <li>Evaluation frameworks for LLM apps (RAGAS, LangSmith)</li>
+      <li>Production ML: feature stores, model registries, A/B testing</li>
+    </ul>
+
+    <h3>Automation + Data</h3>
+    <ul class="checklist">
+      <li>Apache Airflow for complex data pipelines</li>
+      <li>dbt for SQL transformations</li>
+      <li>Polars as a faster Pandas alternative</li>
+      <li>Streamlit for quick internal dashboards</li>
+      <li>Scrapy as a full-featured scraping framework</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Quick Reference — Pythonic One-Liners</h2>
+    <div class="qr-grid">
+      <div class="qr-item">
+        <div class="qr-label">Safe dict access</div>
+        <code>value = d.get(key, default)</code>
+        <p>Never KeyError; returns default if key missing</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">First match</div>
+        <code>next((x for x in items if cond(x)), None)</code>
+        <p>Returns first match or None — no StopIteration</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Flatten a list</div>
+        <code>[x for sub in nested for x in sub]</code>
+        <p>Or: itertools.chain.from_iterable(nested)</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Group by key</div>
+        <code>from collections import defaultdict<br>d = defaultdict(list)<br>for item in items: d[item.key].append(item)</code>
+        <p>No KeyError, no if-else boilerplate</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Swap variables</div>
+        <code>a, b = b, a</code>
+        <p>No temp variable needed</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Conditional expression</div>
+        <code>value = x if condition else y</code>
+        <p>Python's ternary — reads left to right</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Merge dicts</div>
+        <code>merged = {**dict1, **dict2}</code>
+        <p>Or: dict1 | dict2 (Python 3.9+)</p>
+      </div>
+      <div class="qr-item">
+        <div class="qr-label">Check all/any</div>
+        <code>all(t.done for t in tasks)<br>any(t.done for t in tasks)</code>
+        <p>Short-circuits — more idiomatic than a loop</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+    <ul class="takeaway-list">
+      <li>The shift from Java to Python is not just syntax — it's moving from "explicit structure" to "trust the idioms". The more you reach for comprehensions, generators, Protocols, and context managers, the more Pythonic your code becomes.</li>
+      <li>Reading real codebases accelerates learning faster than any tutorial. FastAPI's source code alone contains more Python idioms than most books.</li>
+      <li>The most persistent Java-ism in Python code is excessive class creation. Python functions are first-class objects — a function is often the right level of abstraction, not a class.</li>
+      <li>You've covered 54 days of Python. You now have the vocabulary to read most Python code, the patterns to write production systems, and the context to know which tool fits which problem.</li>
+      <li>Tomorrow is the capstone. Pick your option and build something you'll actually use.</li>
+    </ul>
+    <div class="practice-box">
+      <h4>Before Day 56 — Capstone Prep</h4>
+      <ul>
+        <li>Pick your capstone option (A: Real Estate Automation or B: AI Dev Tool)</li>
+        <li>Sketch the architecture — which components, which libraries, which endpoints</li>
+        <li>Set up the project directory, pyproject.toml, and .env before starting to code</li>
+        <li>Revisit any weak-spot day pages that came up in today's checklist</li>
+      </ul>
+    </div>
+    <div class="next-teaser">
+      <strong>Day 56 — Capstone:</strong> The final day. Two options: a real estate property listing service or an AI dev tool that lets you chat with your own codebase. Everything from 56 days comes together in one project.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a href="day54.html" class="nav-btn">← Day 54: ML Stack</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a href="day56.html" class="nav-btn">Day 56: Capstone →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const btn = document.getElementById('done-btn');
+  if (localStorage.getItem('day-55-done') === 'true') btn.classList.add('marked');
+  function toggleDone() {
+    const done = localStorage.getItem('day-55-done') === 'true';
+    localStorage.setItem('day-55-done', !done);
+    btn.classList.toggle('marked');
+  }
+</script>
+</body>
+</html>

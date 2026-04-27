@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 14 — Project: Refactor CLI with OOP | Python for Java Developers</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+  <style>
+    /* Phase 1 — Foundation: teal badge */
+    .phase-badge { background: #1e2a1e; color: #40e0b0; border: 1px solid #2a3d2a; }
+    /* Project day: orange day badge */
+    .day-badge { background: #ff6b35; color: #fff; }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="topnav-left"><a href="index.html">← All Days</a></div>
+  <div class="topnav-right">Day 14 / 56</div>
+</nav>
+
+<div class="hero">
+  <div class="hero-meta">
+    <span class="day-badge">Project</span>
+    <span class="phase-badge">Phase 1 — Foundation</span>
+  </div>
+  <h1>Refactor CLI with OOP</h1>
+  <p>Take the Day 7 task manager and rebuild it properly — a <code>Task</code> dataclass, a <code>TaskManager</code> class, a logging decorator, and type hints throughout. Same features, dramatically cleaner code.</p>
+</div>
+
+<main>
+
+  <section>
+    <h2>Project Spec</h2>
+
+    <div class="spec-box">
+      <h3>What to build</h3>
+      <ul>
+        <li>A <code>Task</code> dataclass with <code>id</code>, <code>title</code>, <code>description</code>, <code>done</code>, <code>created_at</code> fields</li>
+        <li>A <code>TaskManager</code> class that owns the task list and all operations</li>
+        <li>JSON persistence via a <code>JsonStorage</code> class with a context manager interface</li>
+        <li>A <code>@logged</code> decorator that records each action with a timestamp</li>
+        <li>Full type hints on every function and method</li>
+        <li>Same CLI menu as Day 7: add, list, complete, delete, quit</li>
+      </ul>
+    </div>
+
+    <div class="stretch-box">
+      <h4>Stretch goals</h4>
+      <ul>
+        <li>Add a <code>TaskFilter</code> class with method chaining: <code>TaskFilter(tasks).pending().created_before(date).all()</code></li>
+        <li>Add due dates to <code>Task</code> using <code>datetime</code> and filter overdue tasks</li>
+        <li>Add a <code>@validate_input</code> decorator that prevents empty task titles</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>Architecture Overview</h2>
+
+    <p>The refactor separates concerns that were mixed together in Day 7. Each class has one job:</p>
+
+    <div class="callout-teal">
+      <strong>models.py</strong> — <code>Task</code> dataclass (data only, no logic)<br>
+      <strong>storage.py</strong> — <code>JsonStorage</code> class (file I/O only)<br>
+      <strong>manager.py</strong> — <code>TaskManager</code> class (business logic)<br>
+      <strong>decorators.py</strong> — <code>@logged</code>, <code>@validate_input</code> decorators<br>
+      <strong>cli.py</strong> — <code>CLI</code> class (user interaction only)<br>
+      <strong>main.py</strong> — entry point, wires everything together
+    </div>
+
+    <div class="callout">
+      <strong>Day 7 vs Day 14:</strong> Day 7 had all logic in functions scattered across two files. Day 14 uses classes so each concern is encapsulated — adding features only touches the relevant class, not the whole codebase.
+    </div>
+  </section>
+
+  <section>
+    <h2>models.py — The Task Dataclass</h2>
+
+    <div class="file-label">📄 models.py</div>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from dataclasses import dataclass, field
+from datetime import datetime
+
+
+@dataclass
+class Task:
+    """Represents a single task. Immutable id and created_at."""
+    id: int
+    title: str
+    description: str = ""
+    done: bool = False
+    created_at: datetime = field(default_factory=datetime.now)
+
+    def complete(self) -> "Task":
+        """Return a new Task with done=True (keeps original intact)."""
+        # We can't mutate in place cleanly if we want to keep history,
+        # but for simplicity here we just set done directly
+        self.done = True
+        return self
+
+    def to_dict(self) -> dict:
+        """Serialize to JSON-safe dict."""
+        return {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "done": self.done,
+            "created_at": self.created_at.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Task":
+        """Deserialize from dict (e.g. loaded from JSON)."""
+        return cls(
+            id=data["id"],
+            title=data["title"],
+            description=data.get("description", ""),
+            done=data.get("done", False),
+            created_at=datetime.fromisoformat(data["created_at"]),
+        )
+
+    def __str__(self) -> str:
+        status = "✓" if self.done else "○"
+        return f"[{status}] #{self.id} {self.title}"</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>storage.py — JSON Persistence</h2>
+
+    <div class="file-label">📄 storage.py</div>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import json
+from pathlib import Path
+from contextlib import contextmanager
+from typing import Generator
+
+from models import Task
+
+
+class JsonStorage:
+    """Handles reading and writing tasks to a JSON file."""
+
+    def __init__(self, path: str | Path = "tasks.json"):
+        self.path = Path(path)
+
+    def load(self) -> list[Task]:
+        """Load all tasks from file. Returns empty list if file missing."""
+        if not self.path.exists():
+            return []
+        try:
+            data = json.loads(self.path.read_text())
+            return [Task.from_dict(d) for d in data]
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Warning: could not load tasks ({e}), starting fresh.")
+            return []
+
+    def save(self, tasks: list[Task]) -> None:
+        """Write all tasks to file."""
+        self.path.write_text(
+            json.dumps([t.to_dict() for t in tasks], indent=2)
+        )
+
+    @contextmanager
+    def session(self) -> Generator[list[Task], None, None]:
+        """Load tasks, yield them for modification, save on exit."""
+        tasks = self.load()
+        try:
+            yield tasks
+        finally:
+            self.save(tasks)</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>decorators.py — Logging + Validation</h2>
+
+    <div class="file-label">📄 decorators.py</div>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">import functools
+from datetime import datetime
+from typing import Callable, TypeVar, Any
+
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def logged(func: F) -> F:
+    """Log method calls with timestamp and arguments."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        ts = datetime.now().strftime("%H:%M:%S")
+        # args[0] is self — skip it for cleaner log output
+        call_args = ", ".join(
+            [repr(a) for a in args[1:]] +
+            [f"{k}={v!r}" for k, v in kwargs.items()]
+        )
+        print(f"[{ts}] {func.__name__}({call_args})")
+        return func(*args, **kwargs)
+    return wrapper  # type: ignore[return-value]
+
+
+def validate_title(func: F) -> F:
+    """Reject empty or whitespace-only task titles."""
+    @functools.wraps(func)
+    def wrapper(self, title: str, *args, **kwargs):
+        if not title or not title.strip():
+            print("Error: task title cannot be empty.")
+            return None
+        return func(self, title.strip(), *args, **kwargs)
+    return wrapper  # type: ignore[return-value]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>manager.py — Business Logic</h2>
+
+    <div class="file-label">📄 manager.py</div>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from models import Task
+from storage import JsonStorage
+from decorators import logged, validate_title
+
+
+class TaskManager:
+    """Owns the task list and all business operations."""
+
+    def __init__(self, storage: JsonStorage):
+        self._storage = storage
+        self._tasks: list[Task] = storage.load()
+
+    def _next_id(self) -> int:
+        return max((t.id for t in self._tasks), default=0) + 1
+
+    @logged
+    @validate_title
+    def add(self, title: str, description: str = "") -> Task:
+        """Create and store a new task."""
+        task = Task(id=self._next_id(), title=title, description=description)
+        self._tasks.append(task)
+        self._storage.save(self._tasks)
+        return task
+
+    @logged
+    def complete(self, task_id: int) -> bool:
+        """Mark a task as done. Returns True if found."""
+        for task in self._tasks:
+            if task.id == task_id:
+                task.complete()
+                self._storage.save(self._tasks)
+                return True
+        print(f"Task #{task_id} not found.")
+        return False
+
+    @logged
+    def delete(self, task_id: int) -> bool:
+        """Remove a task. Returns True if found."""
+        original = len(self._tasks)
+        self._tasks = [t for t in self._tasks if t.id != task_id]
+        if len(self._tasks) < original:
+            self._storage.save(self._tasks)
+            return True
+        print(f"Task #{task_id} not found.")
+        return False
+
+    def all(self) -> list[Task]:
+        return list(self._tasks)
+
+    def pending(self) -> list[Task]:
+        return [t for t in self._tasks if not t.done]
+
+    def completed(self) -> list[Task]:
+        return [t for t in self._tasks if t.done]</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>cli.py — User Interface</h2>
+
+    <div class="file-label">📄 cli.py</div>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from manager import TaskManager
+
+
+class CLI:
+    """Handles all user interaction. Knows nothing about storage."""
+
+    def __init__(self, manager: TaskManager):
+        self._mgr = manager
+
+    def run(self) -> None:
+        print("\n=== Task Manager (OOP Edition) ===")
+        actions = {
+            "1": self._add,
+            "2": self._list,
+            "3": self._complete,
+            "4": self._delete,
+            "5": self._quit,
+        }
+        while True:
+            self._print_menu()
+            choice = input("Choice: ").strip()
+            action = actions.get(choice)
+            if action:
+                action()
+            else:
+                print("Invalid choice.")
+
+    def _print_menu(self) -> None:
+        pending = len(self._mgr.pending())
+        print(f"\n[{pending} pending]")
+        print("1) Add task   2) List tasks   3) Complete   4) Delete   5) Quit")
+
+    def _add(self) -> None:
+        title = input("Title: ").strip()
+        desc  = input("Description (optional): ").strip()
+        task  = self._mgr.add(title, desc)
+        if task:
+            print(f"Added: {task}")
+
+    def _list(self) -> None:
+        tasks = self._mgr.all()
+        if not tasks:
+            print("No tasks yet.")
+            return
+        print(f"\n{'ID':>3}  {'Status':<8} {'Title'}")
+        print("-" * 40)
+        for t in tasks:
+            status = "Done" if t.done else "Pending"
+            print(f"{t.id:>3}  {status:<8} {t.title}")
+
+    def _complete(self) -> None:
+        try:
+            task_id = int(input("Task ID to complete: "))
+            if self._mgr.complete(task_id):
+                print(f"Task #{task_id} marked as done.")
+        except ValueError:
+            print("Please enter a valid number.")
+
+    def _delete(self) -> None:
+        try:
+            task_id = int(input("Task ID to delete: "))
+            if self._mgr.delete(task_id):
+                print(f"Task #{task_id} deleted.")
+        except ValueError:
+            print("Please enter a valid number.")
+
+    def _quit(self) -> None:
+        print("Goodbye!")
+        raise SystemExit(0)</code></pre>
+    </div>
+
+    <div class="file-label">📄 main.py</div>
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from storage import JsonStorage
+from manager import TaskManager
+from cli import CLI
+
+
+def main() -> None:
+    storage = JsonStorage("tasks.json")
+    manager = TaskManager(storage)
+    cli = CLI(manager)
+    cli.run()
+
+
+if __name__ == "__main__":
+    main()</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Key Design Decisions</h2>
+
+    <h3>Dependency injection — not global state</h3>
+    <p><code>TaskManager</code> receives its <code>JsonStorage</code> via the constructor rather than importing and calling it directly. This means you can swap in a different storage backend (in-memory, SQLite, remote API) without changing <code>TaskManager</code> at all — and you can pass a fake storage in tests.</p>
+
+    <div class="callout-teal">
+      <strong>Java parallel:</strong> This is constructor injection — the same pattern as <code>@Autowired</code> in Spring, but without a framework. Python doesn't need a DI container for simple cases; passing dependencies as constructor args is idiomatic.
+    </div>
+
+    <h3>Decorator stacking on methods</h3>
+    <p>The <code>add</code> method stacks two decorators. Remember: bottom-up application means <code>validate_title</code> wraps the raw method first, then <code>logged</code> wraps that. On call: <code>logged</code> runs first (prints the log), then passes control to <code>validate_title</code>, which validates before calling the real <code>add</code>.</p>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">@logged          # outermost — runs first on call
+@validate_title  # innermost — runs second, before add body
+def add(self, title: str, description: str = "") -> Task:
+    ...</code></pre>
+    </div>
+
+    <h3>Stretch: TaskFilter with method chaining</h3>
+
+    <div class="python-block">
+      <span class="block-label">Python</span>
+      <pre><code class="language-python">from datetime import datetime
+from models import Task
+
+
+class TaskFilter:
+    """Fluent interface for filtering tasks."""
+
+    def __init__(self, tasks: list[Task]):
+        self._tasks = list(tasks)
+
+    def pending(self) -> "TaskFilter":
+        self._tasks = [t for t in self._tasks if not t.done]
+        return self   # return self for chaining
+
+    def completed(self) -> "TaskFilter":
+        self._tasks = [t for t in self._tasks if t.done]
+        return self
+
+    def created_before(self, dt: datetime) -> "TaskFilter":
+        self._tasks = [t for t in self._tasks if t.created_at < dt]
+        return self
+
+    def with_title(self, substring: str) -> "TaskFilter":
+        self._tasks = [t for t in self._tasks if substring.lower() in t.title.lower()]
+        return self
+
+    def all(self) -> list[Task]:
+        return list(self._tasks)
+
+    def count(self) -> int:
+        return len(self._tasks)
+
+
+# Usage
+from manager import TaskManager
+from storage import JsonStorage
+
+manager = TaskManager(JsonStorage())
+
+results = (
+    TaskFilter(manager.all())
+    .pending()
+    .with_title("buy")
+    .all()
+)
+print(f"Pending 'buy' tasks: {len(results)}")</code></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Quick Reference Card</h2>
+    <div class="qr-grid">
+
+      <div class="qr-item">
+        <div class="qr-label">Dataclass with from_dict</div>
+        <code>@classmethod / def from_dict(cls, d): return cls(...)</code>
+        <p>Factory classmethod for deserialization — replaces a static parse method.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Context manager storage</div>
+        <code>@contextmanager / def session(): tasks = load(); yield tasks; save(tasks)</code>
+        <p>Load-yield-save pattern guarantees persistence even on exception.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Decorator on method</div>
+        <code>@logged / def add(self, title): ...</code>
+        <p>Works the same as on functions. <code>args[0]</code> is <code>self</code>.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Constructor injection</div>
+        <code>def __init__(self, storage: JsonStorage): self._storage = storage</code>
+        <p>Dependencies come in via constructor — testable, swappable, no global state.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Method chaining</div>
+        <code>def filter(self): ...; return self</code>
+        <p>Return <code>self</code> from each method to enable fluent chaining.</p>
+      </div>
+
+      <div class="qr-item">
+        <div class="qr-label">Entry point</div>
+        <code>if __name__ == "__main__": main()</code>
+        <p>Wire dependencies here — keep <code>main.py</code> thin, classes reusable.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>Wrap-up</h2>
+
+    <ul class="takeaway-list">
+      <li>Splitting into <code>models</code>, <code>storage</code>, <code>manager</code>, <code>decorators</code>, and <code>cli</code> gives each class a single, clear responsibility. Adding a new feature (due dates, priorities) touches exactly one class — not the whole codebase.</li>
+      <li>Constructor injection makes <code>TaskManager</code> independently testable. You can pass a fake or in-memory <code>Storage</code> object in tests — no file system required.</li>
+      <li>The <code>@dataclass</code> + <code>to_dict</code>/<code>from_dict</code> pattern is the standard Python approach to serializable data objects. It replaces both the Lombok boilerplate and the manual Jackson mapping in Java.</li>
+      <li>Method chaining (<code>return self</code>) is the Python equivalent of Java's builder pattern — clean, readable, no builder class required.</li>
+      <li>Decorators on class methods work the same as on functions — <code>args[0]</code> is <code>self</code>. Stack them for composable cross-cutting concerns (logging, validation, timing) without touching the method body.</li>
+    </ul>
+
+    <div class="practice-box">
+      <h4>Stretch goals to try</h4>
+      <ul>
+        <li>Add a <code>due_date: datetime | None</code> field to <code>Task</code> and implement <code>TaskFilter.overdue()</code></li>
+        <li>Add a <code>priority: int</code> field (1–5) and <code>TaskFilter.min_priority(n)</code></li>
+        <li>Write a <code>MemoryStorage</code> class that stores tasks in a list — swap it in via <code>main.py</code> with zero changes to <code>TaskManager</code></li>
+        <li>Add a <code>@timed</code> decorator and apply it to <code>TaskManager.add</code> alongside <code>@logged</code></li>
+        <li>Export the filtered task list to CSV using <code>csv.DictWriter</code> via a CLI option</li>
+      </ul>
+    </div>
+
+    <div class="next-teaser">
+      <strong>Next — Day 15: collections module</strong><br>
+      Phase 2 begins. You'll learn the Python standard library's power tools: <code>Counter</code>, <code>defaultdict</code>, <code>deque</code>, and <code>namedtuple</code> — each replacing a verbose Java pattern with a one-liner.
+    </div>
+  </section>
+
+</main>
+
+<div class="bottom-nav">
+  <a class="nav-btn" href="day13.html">← Previous</a>
+  <button class="done-btn" id="done-btn" onclick="toggleDone()">Mark as Done</button>
+  <a class="nav-btn" href="day15.html">Next →</a>
+</div>
+
+<script>
+  hljs.highlightAll();
+  const DAY = 14;
+  const btn = document.getElementById('done-btn');
+  function toggleDone() {
+    const key = `day-${DAY}-done`;
+    const isDone = localStorage.getItem(key) === 'true';
+    localStorage.setItem(key, !isDone);
+    btn.textContent = !isDone ? '✓ Done' : 'Mark as Done';
+    btn.classList.toggle('marked', !isDone);
+  }
+  if (localStorage.getItem(`day-${DAY}-done`) === 'true') {
+    btn.textContent = '✓ Done';
+    btn.classList.add('marked');
+  }
+</script>
+</body>
+</html>
