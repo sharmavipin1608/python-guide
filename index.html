@@ -97,16 +97,81 @@
       color: #0d0d0d;
     }
 
-    /* Phase labels */
+    /* Phase section headers */
     .phase-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #555;
-      padding: 32px 24px 12px;
       max-width: 1200px;
       margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .phase-transition-line {
+      height: 1px;
+      background: linear-gradient(to right, transparent, #2a2a2a 15%, #2a2a2a 85%, transparent);
+      margin: 48px 0 40px;
+    }
+
+    .phase-header-content {
+      display: flex;
+      align-items: flex-start;
+      gap: 28px;
+      padding-bottom: 28px;
+    }
+
+    .phase-num {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(3rem, 6vw, 4.5rem);
+      font-weight: 800;
+      color: #f0e040;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      flex-shrink: 0;
+    }
+
+    .phase-info {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding-top: 6px;
+    }
+
+    .phase-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #e0e0e0;
+      line-height: 1.2;
+    }
+
+    .phase-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #555;
+      margin-top: 8px;
+    }
+
+    /* Phase jump nav */
+    .phase-jump {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding: 16px 24px 0;
+    }
+
+    .phase-jump a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: #555;
+      text-decoration: none;
+      padding: 5px 14px;
+      border: 1px solid #222;
+      border-radius: 4px;
+      transition: all 0.15s ease;
+    }
+
+    .phase-jump a:hover {
+      color: #f0e040;
+      border-color: #f0e040;
     }
 
     /* Grid */
@@ -242,8 +307,24 @@
   <button class="week-btn" data-week="8">Week 8</button>
 </div>
 
+<div class="phase-jump">
+  <a href="#phase1">01 Foundation</a>
+  <a href="#phase2">02 Core Libraries</a>
+  <a href="#phase3">03 Backend + AI</a>
+  <a href="#phase4">04 Advanced</a>
+</div>
+
 <!-- Phase 1 -->
-<div class="phase-label" data-phase="1">Phase 1 — Foundation (Week 1–2)</div>
+<div class="phase-label" data-phase="1" id="phase1">
+  <div class="phase-transition-line"></div>
+  <div class="phase-header-content">
+    <span class="phase-num">01</span>
+    <div class="phase-info">
+      <div class="phase-title">Foundation</div>
+      <div class="phase-meta">Week 1–2 · 14 days · Core language</div>
+    </div>
+  </div>
+</div>
 <div class="grid" id="grid-phase1">
 
   <a class="card" href="day1.html" data-day="1" data-week="1">
@@ -377,7 +458,16 @@
 </div>
 
 <!-- Phase 2 -->
-<div class="phase-label" data-phase="2">Phase 2 — Core Libraries (Week 3–4)</div>
+<div class="phase-label" data-phase="2" id="phase2">
+  <div class="phase-transition-line"></div>
+  <div class="phase-header-content">
+    <span class="phase-num">02</span>
+    <div class="phase-info">
+      <div class="phase-title">Core Libraries</div>
+      <div class="phase-meta">Week 3–4 · 14 days · Standard library + data</div>
+    </div>
+  </div>
+</div>
 <div class="grid" id="grid-phase2">
 
   <a class="card" href="day15.html" data-day="15" data-week="3">
@@ -469,7 +559,16 @@
 </div>
 
 <!-- Phase 3 -->
-<div class="phase-label" data-phase="3">Phase 3 — Backend + AI (Week 5–6)</div>
+<div class="phase-label" data-phase="3" id="phase3">
+  <div class="phase-transition-line"></div>
+  <div class="phase-header-content">
+    <span class="phase-num">03</span>
+    <div class="phase-info">
+      <div class="phase-title">Backend + AI</div>
+      <div class="phase-meta">Week 5–6 · 14 days · FastAPI, LangChain, RAG</div>
+    </div>
+  </div>
+</div>
 <div class="grid" id="grid-phase3">
 
   <a class="card" href="day29.html" data-day="29" data-week="5">
@@ -561,7 +660,16 @@
 </div>
 
 <!-- Phase 4 -->
-<div class="phase-label" data-phase="4">Phase 4 — Advanced (Week 7–8)</div>
+<div class="phase-label" data-phase="4" id="phase4">
+  <div class="phase-transition-line"></div>
+  <div class="phase-header-content">
+    <span class="phase-num">04</span>
+    <div class="phase-info">
+      <div class="phase-title">Advanced</div>
+      <div class="phase-meta">Week 7–8 · 14 days · Internals, packaging, CI/CD</div>
+    </div>
+  </div>
+</div>
 <div class="grid" id="grid-phase4">
 
   <a class="card" href="day43.html" data-day="43" data-week="7">
