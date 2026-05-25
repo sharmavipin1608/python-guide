@@ -105,9 +105,16 @@
     }
 
     .phase-transition-line {
-      height: 1px;
-      background: linear-gradient(to right, transparent, #2a2a2a 15%, #2a2a2a 85%, transparent);
-      margin: 48px 0 40px;
+      display: flex;
+      justify-content: center;
+      margin: 40px 0 36px;
+    }
+
+    .phase-transition-line::after {
+      content: '';
+      width: 1px;
+      height: 72px;
+      background: linear-gradient(to bottom, transparent, #3a3a3a 40%, #3a3a3a 60%, transparent);
     }
 
     .phase-header-content {
