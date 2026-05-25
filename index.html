@@ -97,17 +97,128 @@
       color: #0d0d0d;
     }
 
-    /* Phase labels */
+    /* Phase section headers */
     .phase-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-      color: #555;
-      padding: 32px 24px 12px;
       max-width: 1200px;
       margin: 0 auto;
+      padding: 0 24px;
     }
+
+    .phase-transition-line {
+      display: flex;
+      justify-content: center;
+      margin: 40px 0 36px;
+    }
+
+    .phase-transition-line::after {
+      content: '';
+      width: 1px;
+      height: 72px;
+      background: linear-gradient(to bottom, transparent, #3a3a3a 40%, #3a3a3a 60%, transparent);
+    }
+
+    /* Phase 1 connector uses base solid color (no preceding phase to blend from) */
+    .phase-label[data-phase="1"] .phase-transition-line::after {
+      background: linear-gradient(to bottom, transparent, #3a3a3a 40%, #3a3a3a 60%, transparent);
+    }
+
+    /* Color transitions between adjacent phase colors */
+    .phase-label[data-phase="2"] .phase-transition-line::after {
+      background: linear-gradient(to bottom, transparent, #f0e040 35%, #7090ff 65%, transparent);
+    }
+    .phase-label[data-phase="3"] .phase-transition-line::after {
+      background: linear-gradient(to bottom, transparent, #7090ff 35%, #ff6b35 65%, transparent);
+    }
+    .phase-label[data-phase="4"] .phase-transition-line::after {
+      background: linear-gradient(to bottom, transparent, #ff6b35 35%, #b070ff 65%, transparent);
+    }
+
+    .phase-header-content {
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      padding: 24px 28px;
+      background: #111111;
+      border: 1px solid #2a2a2a;
+      border-left: 3px solid #f0e040;
+      border-radius: 12px;
+      margin-bottom: 28px;
+    }
+
+    .phase-num {
+      font-family: 'Syne', sans-serif;
+      font-size: clamp(2.5rem, 5vw, 3.8rem);
+      font-weight: 800;
+      color: #f0e040;
+      line-height: 1;
+      letter-spacing: -0.04em;
+      flex-shrink: 0;
+      min-width: 72px;
+    }
+
+    .phase-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .phase-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #e0e0e0;
+      line-height: 1.2;
+    }
+
+    .phase-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.72rem;
+      color: #555;
+      margin-top: 7px;
+      letter-spacing: 0.03em;
+    }
+
+    /* Per-phase accent colors */
+    .phase-label[data-phase="1"] .phase-header-content { border-left-color: #f0e040; }
+    .phase-label[data-phase="1"] .phase-num { color: #f0e040; }
+
+    .phase-label[data-phase="2"] .phase-header-content { border-left-color: #7090ff; background: #0d0d1a; border-color: #1a1a3a; border-left-color: #7090ff; }
+    .phase-label[data-phase="2"] .phase-num { color: #7090ff; }
+
+    .phase-label[data-phase="3"] .phase-header-content { border-left-color: #ff6b35; background: #130d08; border-color: #2a1a10; border-left-color: #ff6b35; }
+    .phase-label[data-phase="3"] .phase-num { color: #ff6b35; }
+
+    .phase-label[data-phase="4"] .phase-header-content { border-left-color: #b070ff; background: #0f0a1a; border-color: #241535; border-left-color: #b070ff; }
+    .phase-label[data-phase="4"] .phase-num { color: #b070ff; }
+
+    /* Phase jump nav */
+    .phase-jump {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+      padding: 20px 24px 16px;
+    }
+
+    .phase-jump a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #555;
+      text-decoration: none;
+      padding: 6px 14px;
+      border: 1px solid #222;
+      border-radius: 20px;
+      transition: all 0.15s ease;
+    }
+
+    .phase-jump a[href="#phase1"]:hover { color: #f0e040; border-color: #f0e040; }
+    .phase-jump a[href="#phase2"]:hover { color: #7090ff; border-color: #7090ff; }
+    .phase-jump a[href="#phase3"]:hover { color: #ff6b35; border-color: #ff6b35; }
+    .phase-jump a[href="#phase4"]:hover { color: #b070ff; border-color: #b070ff; }
+
+    .phase-jump a[href="#phase1"] .jump-num { color: #f0e040; }
+    .phase-jump a[href="#phase2"] .jump-num { color: #7090ff; }
+    .phase-jump a[href="#phase3"] .jump-num { color: #ff6b35; }
+    .phase-jump a[href="#phase4"] .jump-num { color: #b070ff; }
 
     /* Grid */
     .grid {
@@ -242,8 +353,24 @@
   <button class="week-btn" data-week="8">Week 8</button>
 </div>
 
+<div class="phase-jump">
+  <a href="#phase1"><span class="jump-num">01</span> Foundation</a>
+  <a href="#phase2"><span class="jump-num">02</span> Core Libraries</a>
+  <a href="#phase3"><span class="jump-num">03</span> Backend + AI</a>
+  <a href="#phase4"><span class="jump-num">04</span> Advanced</a>
+</div>
+
 <!-- Phase 1 -->
-<div class="phase-label" data-phase="1">Phase 1 — Foundation (Week 1–2)</div>
+<div class="phase-label" data-phase="1" id="phase1">
+  <div class="phase-transition-line"></div>
+  <div class="phase-header-content">
+    <span class="phase-num">01</span>
+    <div class="phase-info">
+      <div class="phase-title">Foundation</div>
+      <div class="phase-meta">Week 1–2 · 14 days · Core language</div>
+    </div>
+  </div>
+</div>
 <div class="grid" id="grid-phase1">
 
   <a class="card" href="day1.html" data-day="1" data-week="1">
@@ -377,7 +504,16 @@
 </div>
 
 <!-- Phase 2 -->
-<div class="phase-label" data-phase="2">Phase 2 — Core Libraries (Week 3–4)</div>
+<div class="phase-label" data-phase="2" id="phase2">
+  <div class="phase-transition-line"></div>
+  <div class="phase-header-content">
+    <span class="phase-num">02</span>
+    <div class="phase-info">
+      <div class="phase-title">Core Libraries</div>
+      <div class="phase-meta">Week 3–4 · 14 days · Standard library + data</div>
+    </div>
+  </div>
+</div>
 <div class="grid" id="grid-phase2">
 
   <a class="card" href="day15.html" data-day="15" data-week="3">
@@ -469,7 +605,16 @@
 </div>
 
 <!-- Phase 3 -->
-<div class="phase-label" data-phase="3">Phase 3 — Backend + AI (Week 5–6)</div>
+<div class="phase-label" data-phase="3" id="phase3">
+  <div class="phase-transition-line"></div>
+  <div class="phase-header-content">
+    <span class="phase-num">03</span>
+    <div class="phase-info">
+      <div class="phase-title">Backend + AI</div>
+      <div class="phase-meta">Week 5–6 · 14 days · FastAPI, LangChain, RAG</div>
+    </div>
+  </div>
+</div>
 <div class="grid" id="grid-phase3">
 
   <a class="card" href="day29.html" data-day="29" data-week="5">
@@ -561,7 +706,16 @@
 </div>
 
 <!-- Phase 4 -->
-<div class="phase-label" data-phase="4">Phase 4 — Advanced (Week 7–8)</div>
+<div class="phase-label" data-phase="4" id="phase4">
+  <div class="phase-transition-line"></div>
+  <div class="phase-header-content">
+    <span class="phase-num">04</span>
+    <div class="phase-info">
+      <div class="phase-title">Advanced</div>
+      <div class="phase-meta">Week 7–8 · 14 days · Internals, packaging, CI/CD</div>
+    </div>
+  </div>
+</div>
 <div class="grid" id="grid-phase4">
 
   <a class="card" href="day43.html" data-day="43" data-week="7">
@@ -652,7 +806,7 @@
 
 </div>
 
-<footer>56 days · Python for Java Developers · Built with Claude Code</footer>
+<footer>56 days · Python for Java Developers</footer>
 
 <script>
   // Week filter
