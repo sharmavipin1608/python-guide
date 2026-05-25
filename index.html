@@ -117,6 +117,20 @@
       background: linear-gradient(to bottom, transparent, #3a3a3a 40%, #3a3a3a 60%, transparent);
     }
 
+    /* Phase 1 has nothing above it — hide the line */
+    .phase-label[data-phase="1"] .phase-transition-line { display: none; }
+
+    /* Color transitions between adjacent phase colors */
+    .phase-label[data-phase="2"] .phase-transition-line::after {
+      background: linear-gradient(to bottom, transparent, #f0e040 35%, #7090ff 65%, transparent);
+    }
+    .phase-label[data-phase="3"] .phase-transition-line::after {
+      background: linear-gradient(to bottom, transparent, #7090ff 35%, #ff6b35 65%, transparent);
+    }
+    .phase-label[data-phase="4"] .phase-transition-line::after {
+      background: linear-gradient(to bottom, transparent, #ff6b35 35%, #b070ff 65%, transparent);
+    }
+
     .phase-header-content {
       display: flex;
       align-items: center;
@@ -790,7 +804,7 @@
 
 </div>
 
-<footer>56 days · Python for Java Developers · Built with Claude Code</footer>
+<footer>56 days · Python for Java Developers</footer>
 
 <script>
   // Week filter
