@@ -117,8 +117,10 @@
       background: linear-gradient(to bottom, transparent, #3a3a3a 40%, #3a3a3a 60%, transparent);
     }
 
-    /* Phase 1 has nothing above it — hide the line */
-    .phase-label[data-phase="1"] .phase-transition-line { display: none; }
+    /* Phase 1 connector uses base solid color (no preceding phase to blend from) */
+    .phase-label[data-phase="1"] .phase-transition-line::after {
+      background: linear-gradient(to bottom, transparent, #3a3a3a 40%, #3a3a3a 60%, transparent);
+    }
 
     /* Color transitions between adjacent phase colors */
     .phase-label[data-phase="2"] .phase-transition-line::after {
@@ -193,7 +195,7 @@
       gap: 8px;
       justify-content: center;
       flex-wrap: wrap;
-      padding: 20px 24px 0;
+      padding: 20px 24px 16px;
     }
 
     .phase-jump a {
